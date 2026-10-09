@@ -26,3 +26,4 @@ __pycache__/
 # Private freight data
 data/private/
 sample_data/private/
+sample_data/*.xlsx
