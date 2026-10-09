@@ -1,0 +1,28 @@
+# Python virtual environments
+.venv/
+.venv_old/
+.venv312/
+
+# PyCharm
+.idea/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# Environment variables and secrets
+.env
+.env.*
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Private freight data
+data/private/
+sample_data/private/
