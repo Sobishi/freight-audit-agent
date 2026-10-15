@@ -11,6 +11,7 @@ def test_rate_validation_calculations():
         "Carrier": ["DHL", "FedEx", "DHL"],
         "Service Type": ["Express", "Standard", "Express"],
         "Total": [18000, 20000, 12000],
+        "Base Freight": [18000, 20000, 12000],
     })
 
     rate_card = pd.DataFrame({
@@ -43,6 +44,7 @@ def test_missing_contractual_rate():
         "Carrier": ["UPS"],
         "Service Type": ["Express"],
         "Total": [18000],
+        "Base Freight": [18000],
     })
 
     rate_card = pd.DataFrame({
@@ -148,6 +150,7 @@ def test_rate_validation_rejects_invalid_contractual_rates(
         "Carrier": ["DHL"],
         "Service Type": ["Express"],
         "Total": [15000],
+        "Base Freight": [15000],
     })
 
     rate_card = pd.DataFrame({
@@ -171,6 +174,7 @@ def test_rate_validation_flags_missing_invoice_information():
         "Carrier": ["DHL", None, "FedEx", "  "],
         "Service Type": ["Express", "Express", None, "Standard"],
         "Total": [15000, 18000, 22000, 12000],
+        "Base Freight": [15000, 18000, 22000, 12000],
     })
 
     rate_card = pd.DataFrame({
@@ -222,3 +226,124 @@ def test_rate_validation_tracks_overlapping_missing_information():
     assert result.loc[1, "Rate Status"] == "Rate Matched"
 
 
+
+
+# ---------------------------------------------------------------
+# Cleanup session: tolerance and rate basis
+# ---------------------------------------------------------------
+
+def _tolerance_inputs(freight):
+    invoice = pd.DataFrame({
+        "AWB": ["A1"],
+        "Carrier": ["DHL"],
+        "Service Type": ["Express"],
+        "Total": [freight],
+        "Base Freight": [freight],
+    })
+
+    rate_card = pd.DataFrame({
+        "Carrier": ["DHL"],
+        "Service Type": ["Express"],
+        "Agreed Rate": [12000],
+    })
+
+    return invoice, rate_card
+
+
+def test_difference_within_default_tolerance_is_matched():
+    invoice, rate_card = _tolerance_inputs(12000.01)
+
+    result = validate_freight_rates(invoice, rate_card)
+
+    assert result.loc[0, "Rate Status"] == "Rate Matched"
+    assert result.loc[0, "Potential Rate Overcharge"] == 0
+
+
+def test_difference_above_default_tolerance_is_flagged():
+    invoice, rate_card = _tolerance_inputs(12000.02)
+
+    result = validate_freight_rates(invoice, rate_card)
+
+    assert result.loc[0, "Rate Status"] == "Potential Overcharge"
+    assert result.loc[0, "Potential Rate Overcharge"] == pytest.approx(0.02)
+
+
+def test_custom_tolerance_is_applied():
+    invoice, rate_card = _tolerance_inputs(12004)
+
+    matched = validate_freight_rates(invoice, rate_card, tolerance=5)
+    flagged = validate_freight_rates(invoice, rate_card, tolerance=3)
+
+    assert matched.loc[0, "Rate Status"] == "Rate Matched"
+    assert flagged.loc[0, "Rate Status"] == "Potential Overcharge"
+
+
+def test_negative_tolerance_is_rejected():
+    invoice, rate_card = _tolerance_inputs(12000)
+
+    with pytest.raises(ValueError):
+        validate_freight_rates(invoice, rate_card, tolerance=-1)
+
+
+def test_below_agreed_rate_respects_tolerance():
+    invoice, rate_card = _tolerance_inputs(11999.99)
+
+    result = validate_freight_rates(invoice, rate_card)
+
+    assert result.loc[0, "Rate Status"] == "Rate Matched"
+
+
+def test_rate_basis_is_base_freight_when_column_present():
+    invoice, rate_card = _tolerance_inputs(12000)
+
+    result = validate_freight_rates(invoice, rate_card)
+
+    assert result["Rate Basis"].tolist() == ["Base Freight"]
+
+
+def test_total_fallback_is_labelled_and_warns():
+    invoice, rate_card = _tolerance_inputs(12000)
+    invoice = invoice.drop(columns=["Base Freight"])
+
+    with pytest.warns(UserWarning, match="Base Freight"):
+        result = validate_freight_rates(
+            invoice,
+            rate_card,
+            require_base_freight=False,
+        )
+
+    assert result["Rate Basis"].tolist() == ["Total"]
+
+
+def test_require_base_freight_rejects_total_fallback():
+    invoice, rate_card = _tolerance_inputs(12000)
+    invoice = invoice.drop(columns=["Base Freight"])
+
+    with pytest.raises(ValueError, match="Base Freight"):
+        validate_freight_rates(
+            invoice,
+            rate_card,
+            require_base_freight=True,
+        )
+
+
+def test_default_rejects_total_fallback_without_explicit_argument():
+    invoice, rate_card = _tolerance_inputs(12000)
+    invoice = invoice.drop(columns=["Base Freight"])
+
+    with pytest.raises(ValueError, match="Base Freight"):
+        validate_freight_rates(invoice, rate_card)
+
+
+def test_explicit_opt_out_allows_total_fallback_with_warning():
+    invoice, rate_card = _tolerance_inputs(12000)
+    invoice = invoice.drop(columns=["Base Freight"])
+
+    with pytest.warns(UserWarning, match="Base Freight"):
+        result = validate_freight_rates(
+            invoice,
+            rate_card,
+            require_base_freight=False,
+        )
+
+    assert result["Rate Basis"].tolist() == ["Total"]

@@ -31,6 +31,12 @@ COLUMN_ALIASES = {
         "invoice no",
         "invoice id",
     },
+    "Base Freight": {
+        "base freight",
+        "basic freight",
+        "freight amount",
+        "transportation charge",
+    },
     "Total": {
         "total",
         "total amount",

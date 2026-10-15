@@ -31,3 +31,6 @@ reports/*.zip
 .xlsx
 inspect_formulas.py
 *.xlsx
+*.xlsx
+bundle.py
+project_bundle.txt

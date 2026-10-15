@@ -152,3 +152,40 @@ def test_normalizes_invoice_amounts():
         "22000.50",
         "-5000",
     ]
+
+# ---------------------------------------------------------------
+# Base Freight aliases
+# ---------------------------------------------------------------
+
+@pytest.mark.parametrize("column_name", [
+    "Base Freight",
+    "base_freight",
+    "Freight Amount",
+    "Transportation Charge",
+    "Basic Freight",
+])
+def test_base_freight_aliases_are_recognised(column_name):
+    invoice = pd.DataFrame({
+        "Tracking Number": ["ABC123"],
+        "Invoice Amount": [15000],
+        column_name: [12000],
+    })
+
+    result = normalize_columns(invoice)
+
+    assert "Base Freight" in result.columns
+    assert result.loc[0, "Base Freight"] == 12000
+
+
+def test_freight_charge_still_maps_to_total():
+    """Existing behaviour is kept for the 'freight charge' alias."""
+
+    invoice = pd.DataFrame({
+        "Tracking Number": ["ABC123"],
+        "Freight Charge": [12000],
+    })
+
+    result = normalize_columns(invoice)
+
+    assert "Total" in result.columns
+    assert "Base Freight" not in result.columns

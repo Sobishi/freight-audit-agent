@@ -30,52 +30,7 @@ def detect_duplicates(invoice: pd.DataFrame) -> pd.DataFrame:
     result["Is Duplicate"] = result["Occurrence"] > 1
 
     return result
-def detect_exact_duplicate_charges(
-    invoice: pd.DataFrame,
-) -> pd.DataFrame:
-    """
-    Identify repeated positive charges with matching
-    AWB, carrier and billed amount.
 
-    These are potential duplicates requiring review,
-    not confirmed billing errors.
-    """
-
-    result = invoice.copy()
-
-    result["AWB"] = (
-        result["AWB"]
-        .astype("string")
-        .str.strip()
-        .str.replace(r"\s+", " ", regex=True)
-    )
-
-    if "Carrier" in result.columns:
-        result["Carrier"] = (
-            result["Carrier"]
-            .astype("string")
-            .str.strip()
-            .str.upper()
-        )
-    else:
-        result["Carrier"] = pd.NA
-
-    if "Total" not in result.columns:
-        result["Is Exact Duplicate Charge"] = False
-        return result
-
-    amounts = pd.to_numeric(result["Total"], errors="coerce")
-
-    repeated = result.duplicated(
-        subset=["AWB", "Carrier", "Total"],
-        keep="first",
-    )
-
-    result["Is Exact Duplicate Charge"] = (
-        repeated & (amounts > 0)
-    )
-
-    return result
 
 def generate_duplicate_findings(
     audited_invoice: pd.DataFrame,
@@ -167,6 +122,7 @@ def generate_duplicate_findings(
 
     return findings.reset_index(drop=True)
 
+
 def generate_audit_summary(
     audited_invoice: pd.DataFrame,
     findings: pd.DataFrame,
@@ -203,42 +159,6 @@ def generate_audit_summary(
 
     return summary
 
-def test_generates_structured_duplicate_findings():
-    """
-    Repeated AWBs should produce structured findings
-    with supporting invoice details.
-    """
-
-    import pandas as pd
-
-    from audit_engine.audit import (
-        detect_duplicates,
-        generate_duplicate_findings,
-    )
-
-    invoice = pd.DataFrame({
-        "AWB": ["ABC123", "XYZ456", "ABC123"],
-        "Carrier": ["DHL", "FedEx", "DHL"],
-        "Invoice Ref": ["INV001", "INV002", "INV003"],
-        "Total": [15000, 22000, 15000],
-    })
-
-    audited = detect_duplicates(invoice)
-
-    findings = generate_duplicate_findings(audited)
-
-    assert len(findings) == 1
-
-    finding = findings.iloc[0]
-
-    assert finding["Finding Type"] == "Potential Duplicate Billing"
-    assert finding["AWB"] == "ABC123"
-    assert finding["Carrier"] == "DHL"
-    assert finding["Invoice Ref"] == "INV003"
-    assert finding["Occurrence"] == 2
-    assert finding["Billed Amount"] == 15000
-    assert finding["Potential Exposure"] == 15000
-    assert finding["Status"] == "Requires Review"
 
 def detect_exact_duplicate_charges(
     invoice: pd.DataFrame,

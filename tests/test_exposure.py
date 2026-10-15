@@ -179,3 +179,61 @@ def test_combined_exposure_rejects_mismatched_line_ids():
             audited_invoice,
             rate_results,
         )
+
+# ---------------------------------------------------------------
+# Cleanup session: unknown exposure must never be shown as zero
+# ---------------------------------------------------------------
+
+def _status_inputs(overcharges):
+    n = len(overcharges)
+
+    audited_invoice = pd.DataFrame({
+        "AWB": [f"AWB{i}" for i in range(n)],
+        "Invoice Line ID": list(range(1, n + 1)),
+        "Total": [15000] * n,
+        "Is Exact Duplicate Charge": [False] * n,
+    })
+
+    rate_results = pd.DataFrame({
+        "Invoice Line ID": list(range(1, n + 1)),
+        "Potential Rate Overcharge": overcharges,
+    })
+
+    return audited_invoice, rate_results
+
+
+def test_unknown_rate_exposure_is_flagged_and_held():
+    audited, rates = _status_inputs([float("nan")])
+
+    result = calculate_combined_exposure(audited, rates)
+
+    assert result.loc[0, "Rate Exposure Status"] == "Unknown"
+    assert result.loc[0, "Payment Treatment"] == "Hold"
+
+
+def test_known_rate_exposure_is_quantified():
+    audited, rates = _status_inputs([3000.0])
+
+    result = calculate_combined_exposure(audited, rates)
+
+    assert result.loc[0, "Rate Exposure Status"] == "Quantified"
+    assert result.loc[0, "Payment Treatment"] == "Proceed"
+
+
+def test_zero_overcharge_is_quantified_not_unknown():
+    audited, rates = _status_inputs([0.0])
+
+    result = calculate_combined_exposure(audited, rates)
+
+    assert result.loc[0, "Rate Exposure Status"] == "Quantified"
+
+
+def test_status_stays_with_the_correct_line_when_rows_are_reordered():
+    audited, rates = _status_inputs([100.0, float("nan"), 0.0])
+    rates = rates.iloc[[2, 0, 1]].reset_index(drop=True)
+
+    result = calculate_combined_exposure(audited, rates)
+
+    statuses = dict(zip(result["Invoice Line ID"], result["Rate Exposure Status"]))
+
+    assert statuses == {1: "Quantified", 2: "Unknown", 3: "Quantified"}

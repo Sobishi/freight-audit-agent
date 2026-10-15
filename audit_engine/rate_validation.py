@@ -1,16 +1,37 @@
+import warnings
+
 import pandas as pd
 
 
 def validate_freight_rates(
     invoice: pd.DataFrame,
     rate_card: pd.DataFrame,
+    tolerance: float = 0.01,
+    require_base_freight: bool = True,
 ) -> pd.DataFrame:
     """
     Compare invoiced freight amounts against agreed rates.
 
     This initial version assumes rates are determined
     by carrier and service type.
+
+    tolerance
+        Largest absolute difference, in invoice currency, that is still
+        treated as a match. This absorbs rounding differences.
+        The default is 0.01.
+
+    require_base_freight
+        When True (the default), an invoice without a Base Freight column
+        is rejected instead of being compared on Total. Total normally
+        includes surcharges and tax, so it can create false overcharges.
+        Pass False to compare on Total. A warning is then raised and the
+        Rate Basis column shows "Total".
+
+    The "Rate Basis" column shows which invoice amount was compared.
     """
+
+    if tolerance < 0:
+        raise ValueError("Tolerance cannot be negative.")
 
     required_invoice_columns = {
         "AWB",
@@ -48,6 +69,12 @@ def validate_freight_rates(
     )
     # Use Base Freight for rate validation when available.
     # Otherwise, retain the existing Total-based calculation.
+    if require_base_freight and "Base Freight" not in invoice_data.columns:
+        raise ValueError(
+            "Invoice has no Base Freight column. "
+            "Rate validation on Total is not allowed."
+        )
+
     if "Base Freight" in invoice_data.columns:
         invoice_data["Base Freight"] = pd.to_numeric(
             invoice_data["Base Freight"],
@@ -57,10 +84,20 @@ def validate_freight_rates(
         invoice_data["Rate Validation Amount"] = (
             invoice_data["Base Freight"]
         )
+        invoice_data["Rate Basis"] = "Base Freight"
     else:
+        warnings.warn(
+            "Invoice has no Base Freight column. Rates are compared "
+            "against Total, which may include surcharges and tax and "
+            "can overstate overcharges.",
+            UserWarning,
+            stacklevel=2,
+        )
+
         invoice_data["Rate Validation Amount"] = (
             invoice_data["Total"]
         )
+        invoice_data["Rate Basis"] = "Total"
     # Convert contractual rates to numeric values.
     rates["Agreed Rate"] = pd.to_numeric(
         rates["Agreed Rate"],
@@ -89,8 +126,17 @@ def validate_freight_rates(
             result["Rate Validation Amount"] - result["Agreed Rate"]
     )
 
+    # Differences within the tolerance are treated as matches.
+    # Round first so floating point noise cannot tip a result.
+    rounded_difference = result["Rate Difference"].round(2)
+
+    over_tolerance = rounded_difference > tolerance
+    under_tolerance = rounded_difference < -tolerance
+
     result["Potential Rate Overcharge"] = (
-        result["Rate Difference"].clip(lower=0)
+        result["Rate Difference"]
+        .where(over_tolerance, 0)
+        .where(result["Rate Difference"].notna())
     )
 
     # Classify rate validation results.
@@ -108,12 +154,12 @@ def validate_freight_rates(
     ] = "Rate Matched"
 
     result.loc[
-        valid_comparison & (result["Rate Difference"] > 0),
+        valid_comparison & over_tolerance,
         "Rate Status"
     ] = "Potential Overcharge"
 
     result.loc[
-        valid_comparison & (result["Rate Difference"] < 0),
+        valid_comparison & under_tolerance,
         "Rate Status"
     ] = "Below Agreed Rate"
 

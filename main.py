@@ -43,6 +43,16 @@ def main():
         help="Path to a CSV or Excel file containing agreed carrier rates.",
     )
 
+    parser.add_argument(
+        "--allow-total-fallback",
+        action="store_true",
+        help=(
+            "Compare rates against Total when the invoice has no "
+            "Base Freight column. Total may include surcharges and tax, "
+            "so overcharges can be overstated."
+        ),
+    )
+
     args = parser.parse_args()
 
     print("\nFREIGHT AUDIT AGENT")
@@ -65,7 +75,21 @@ def main():
                 "Unsupported rate card format. Use CSV or Excel."
             )
 
-        rate_results = validate_freight_rates(invoice, rate_card)
+        try:
+            rate_results = validate_freight_rates(
+                invoice,
+                rate_card,
+                require_base_freight=not args.allow_total_fallback,
+            )
+        except ValueError as error:
+            if "Base Freight" in str(error):
+                raise SystemExit(
+                    "Error: the invoice has no Base Freight column, so "
+                    "rates cannot be checked reliably. Add a freight "
+                    "column, or run again with --allow-total-fallback to "
+                    "compare against Total."
+                )
+            raise
 
         print("\nFREIGHT RATE VALIDATION")
         print("-----------------------")
@@ -115,6 +139,16 @@ def main():
         print(
             f"Combined Potential Exposure: {combined_total:,.2f}"
         )
+
+        held = combined_exposure[
+            combined_exposure["Payment Treatment"] == "Hold"
+        ]
+
+        if len(held):
+            print(
+                f"Lines on hold, exposure unknown: {len(held)} "
+                f"(billed value {held['Total'].sum():,.2f})"
+            )
     if args.output:
         report_path = generate_excel_report(
     audited_invoice,

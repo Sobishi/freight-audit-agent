@@ -14,6 +14,11 @@ def calculate_combined_exposure(
 
     This prevents simple double-counting when both
     audit rules flag the same invoice line.
+
+    A line whose rate exposure cannot be calculated, for example when
+    no contract rate exists, is marked "Unknown" and "Hold". Its numeric
+    rate exposure stays at 0 only so totals can be summed. The numeric
+    value must never be read as "no exposure" for these lines.
     """
 
     if len(audited_invoice) != len(rate_results):
@@ -78,14 +83,25 @@ def calculate_combined_exposure(
         .where(result["Is Exact Duplicate Charge"], 0)
     )
 
+    rate_overcharge = pd.to_numeric(
+        rates["Potential Rate Overcharge"],
+        errors="coerce",
+    )
+
+    # A missing overcharge means it could not be calculated.
+    unknown_rate_exposure = rate_overcharge.isna().to_numpy()
+
     result["Rate Exposure"] = (
-        pd.to_numeric(
-            rates["Potential Rate Overcharge"],
-            errors="coerce",
-        )
+        rate_overcharge
         .fillna(0)
         .clip(lower=0)
     )
+
+    result["Rate Exposure Status"] = "Quantified"
+    result.loc[unknown_rate_exposure, "Rate Exposure Status"] = "Unknown"
+
+    result["Payment Treatment"] = "Proceed"
+    result.loc[unknown_rate_exposure, "Payment Treatment"] = "Hold"
 
     result["Combined Potential Exposure"] = result[
         ["Duplicate Exposure", "Rate Exposure"]

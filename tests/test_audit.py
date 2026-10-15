@@ -1,7 +1,15 @@
 import pandas as pd
+import pytest
 
 from audit_engine.audit import detect_duplicates
-from data.loader import load_workbook
+from data.loader import WORKBOOK_PATH, load_workbook
+
+# The demo workbook is private and not stored in the repository.
+# Tests that need it are skipped, not failed, when it is missing.
+requires_workbook = pytest.mark.skipif(
+    not WORKBOOK_PATH.exists(),
+    reason="Private demo workbook not found at WORKBOOK_PATH",
+)
 
 
 def test_duplicate_detection():
@@ -44,6 +52,7 @@ def test_duplicate_detection():
     ]
 
 
+@requires_workbook
 def test_duplicate_detection_matches_excel():
     """
     Compare Python occurrence calculations against
@@ -67,6 +76,7 @@ def test_duplicate_detection_matches_excel():
     assert actual.equals(expected)
 
 
+@requires_workbook
 def test_duplicate_count():
     """
     Verify the expected number of duplicate billing lines.
