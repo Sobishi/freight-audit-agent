@@ -38,3 +38,9 @@ bundle.py
 project_bundle.txt
 logs/
 *patch
+
+# Local patch and transfer files
+*.patch
+phase_r*.txt\project_bundle*.txt
+audit_current.txt
+exposure_current.txt

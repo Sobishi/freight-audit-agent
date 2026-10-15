@@ -2,6 +2,7 @@ import warnings
 
 import pandas as pd
 from audit_engine.rules import tag_rate_results
+from audit_engine.charges import apply_charge_rate_scope
 
 
 def validate_freight_rates(
@@ -203,4 +204,4 @@ def validate_freight_rates(
             "Potential Rate Overcharge",
         ]
     ] = float("nan")
-    return tag_rate_results(result)
+    return tag_rate_results(apply_charge_rate_scope(result))

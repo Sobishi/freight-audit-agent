@@ -3,7 +3,7 @@ from dataclasses import asdict, dataclass
 from types import MappingProxyType
 import pandas as pd
 
-CATALOGUE_VERSION = '1.0.0'
+CATALOGUE_VERSION = '1.1.0'
 
 @dataclass(frozen=True)
 class Rule:
@@ -13,9 +13,11 @@ class Rule:
     version: str = '1.0.0'
 
 RULES = MappingProxyType({r.rule_id: r for r in (
-    Rule('REP-01', 'Repeated AWB requiring review; not proof of duplicate billing'),
-    Rule('DUP-01', 'Repeated positive charge matching AWB, carrier and amount; potential duplicate'),
-    Rule('CR-01', 'Negative repeated-AWB line classified as credit or reversal; not matched to original'),
+    Rule('REP-01', 'Repeated charge requiring review; not proof of duplicate billing', version='2.0.0'),
+    Rule('DUP-01', 'Potential repeated positive charge using charge identity when available; legacy basis labelled', version='2.0.0'),
+    Rule('CR-01', 'Negative charge with conservative within-file full reversal matching', version='2.0.0'),
+    Rule('CHG-01', 'Missing charge type or incomplete charge identity'),
+    Rule('SCOPE-01', 'Explicit non-freight charge not assessed against a freight rate'),
     Rule('ADJ-01', 'Zero-value repeated-AWB adjustment'),
     Rule('DATA-02', 'Missing carrier or service information'),
     Rule('BASE-01', 'Missing base freight amount'),
@@ -30,8 +32,8 @@ RULES = MappingProxyType({r.rule_id: r for r in (
     Rule('TAX-01', 'Tax mismatch', 'planned'),
 )})
 
-DUPLICATE_RULE_IDS = ('REP-01', 'DUP-01', 'CR-01', 'ADJ-01')
-RATE_RULE_IDS = ('DATA-02', 'BASE-01', 'RATE-01', 'RATE-02', 'UNDER-01')
+DUPLICATE_RULE_IDS = ('REP-01', 'DUP-01', 'CR-01', 'ADJ-01', 'CHG-01')
+RATE_RULE_IDS = ('DATA-02', 'BASE-01', 'RATE-01', 'RATE-02', 'UNDER-01', 'CR-01', 'ADJ-01', 'CHG-01', 'SCOPE-01')
 
 
 def get_rule(rule_id):
@@ -57,7 +59,9 @@ def tag_duplicate_findings(findings):
     ids = []
     for _, row in result.iterrows():
         classification = row.get('Classification')
-        if classification == 'Credit or Reversal':
+        if _flag(row, 'Missing Charge Type'):
+            rule_id = 'CHG-01'
+        elif classification == 'Credit or Reversal':
             rule_id = 'CR-01'
         elif classification == 'Zero-Value Adjustment':
             rule_id = 'ADJ-01'
@@ -87,7 +91,9 @@ def tag_rate_results(results):
             ids.append('DATA-02')
         if _flag(row, 'Has Missing Base Freight') or status == 'Missing Base Freight':
             ids.append('BASE-01')
-        status_rule = {'Rate Not Found': 'RATE-01', 'Potential Overcharge': 'RATE-02',
+        status_rule = {'Credit or Reversal': 'CR-01', 'Fully Reversed Charge': 'CR-01',
+                       'Zero-Value Adjustment': 'ADJ-01', 'Missing Charge Type': 'CHG-01',
+                       'Not Assessed - Non Freight': 'SCOPE-01', 'Rate Not Found': 'RATE-01', 'Potential Overcharge': 'RATE-02',
                        'Below Agreed Rate': 'UNDER-01'}.get(status)
         if status_rule:
             ids.append(status_rule)

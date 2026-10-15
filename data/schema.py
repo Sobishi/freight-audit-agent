@@ -31,6 +31,8 @@ COLUMN_ALIASES = {
         "invoice no",
         "invoice id",
     },
+    "Charge Type": {"charge type", "charge code", "charge category"},
+    "Currency": {"currency", "currency code"},
     "Base Freight": {
         "base freight",
         "basic freight",

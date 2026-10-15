@@ -23,6 +23,7 @@ _ALLOWED_KEYS = {
     "carrier_id",
     "carrier_name",
     "columns",
+    "charge_type_aliases",
     "defaults",
     "header_row",
     "sheet",
@@ -51,6 +52,7 @@ class InvoiceMapping:
     carrier_name: str
     columns: dict
     defaults: dict = field(default_factory=dict)
+    charge_type_aliases: dict = field(default_factory=dict)
     header_row: int = 0
     sheet: object = None
     date_format: object = None
@@ -207,11 +209,24 @@ def parse_mapping(data):
     if decimal == thousands:
         raise ValueError("decimal and thousands separators must be different characters.")
 
+    charge_aliases = data.get("charge_type_aliases", {})
+    if not isinstance(charge_aliases, dict):
+        raise ValueError("charge_type_aliases must be a mapping of source values to charge types.")
+    normalized_aliases = {}
+    for source, target in charge_aliases.items():
+        if not isinstance(source, str) or not source.strip() or not isinstance(target, str) or not target.strip():
+            raise ValueError("charge_type_aliases keys and values must be non-blank text.")
+        key = " ".join(source.strip().split()).upper()
+        if key in normalized_aliases:
+            raise ValueError("charge_type_aliases contains duplicate normalized keys.")
+        normalized_aliases[key] = " ".join(target.strip().split()).upper()
+
     return InvoiceMapping(
         carrier_id=carrier_id,
         carrier_name=carrier_name.strip(),
         columns=dict(columns),
         defaults=dict(defaults),
+        charge_type_aliases=normalized_aliases,
         header_row=header_row,
         sheet=sheet,
         date_format=date_format,
@@ -405,6 +420,14 @@ def standardize_invoice(raw, mapping, keep_unmapped=False):
             column = column.where(column.notna(), mapping.carrier_name)
 
         result[name] = column
+
+    if "Charge Type" in result:
+        def charge_type(value):
+            if value is None or pd.isna(value):
+                return None
+            normalized = " ".join(str(value).strip().split()).upper()
+            return mapping.charge_type_aliases.get(normalized, normalized)
+        result["Charge Type"] = result["Charge Type"].map(charge_type)
 
     _check_awb(result, resolved)
     _check_currency(result)

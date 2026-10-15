@@ -107,4 +107,19 @@ def calculate_combined_exposure(
         ["Duplicate Exposure", "Rate Exposure"]
     ].max(axis=1)
 
+    result["Duplicate Exposure Status"] = "Quantified"
+    if "Needs Charge Review" in result:
+        uncertain_duplicate = (result["Needs Charge Review"] & ~result["Is Exact Duplicate Charge"])
+        result.loc[uncertain_duplicate, "Duplicate Exposure Status"] = "Unknown"
+        result.loc[uncertain_duplicate, "Payment Treatment"] = "Hold"
+    if "Excluded From Exposure" in result:
+        reversed_lines = result["Excluded From Exposure"].fillna(False).astype(bool)
+        result.loc[reversed_lines, ["Duplicate Exposure", "Rate Exposure", "Combined Potential Exposure"]] = 0.0
+        result.loc[reversed_lines, "Payment Treatment"] = "No Payment - Reversed"
+    if "Charge Type" in result:
+        amounts = pd.to_numeric(result["Total"], errors="coerce")
+        credit_review = amounts.lt(0) & ~result["Excluded From Exposure"]
+        result.loc[credit_review, "Payment Treatment"] = "Review Credit"
+        result.loc[amounts.eq(0), "Payment Treatment"] = "No Payment - Zero"
+
     return result

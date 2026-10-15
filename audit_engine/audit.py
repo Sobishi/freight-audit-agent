@@ -1,5 +1,6 @@
 import pandas as pd
 from audit_engine.rules import tag_duplicate_findings
+from audit_engine.charges import analyze_charges
 
 
 def detect_duplicates(invoice: pd.DataFrame) -> pd.DataFrame:
@@ -43,9 +44,15 @@ def generate_duplicate_findings(
     associated with a flagged line, not a confirmed loss.
     """
 
-    duplicates = audited_invoice[
-        audited_invoice["Is Duplicate"]
-    ].copy()
+    if "Charge Type" in audited_invoice.columns:
+        audited_invoice = analyze_charges(audited_invoice)
+        amounts = pd.to_numeric(audited_invoice["Total"], errors="coerce")
+        selected = (audited_invoice["Is Exact Duplicate Charge"]
+                    | audited_invoice["Needs Charge Review"] | amounts.lt(0)
+                    | (amounts.eq(0) & audited_invoice["Is Duplicate"]))
+        duplicates = audited_invoice.loc[selected].copy()
+    else:
+        duplicates = audited_invoice[audited_invoice["Is Duplicate"]].copy()
 
     findings = pd.DataFrame(index=duplicates.index)
 
@@ -122,7 +129,22 @@ def generate_duplicate_findings(
         "Priority",
     ] = "High"
 
+    if "Charge Type" in duplicates.columns:
+        for column in ("Charge Type", "Currency", "Duplicate Match Basis", "Missing Charge Type",
+                       "Credit Match Status", "Matched Line ID", "Excluded From Exposure"):
+            if column in duplicates:
+                findings[column] = duplicates[column]
+        uncertain = (pd.to_numeric(findings["Billed Amount"], errors="coerce").gt(0)
+                     & ~findings["Exact Charge Match"])
+        findings.loc[uncertain, "Classification"] = "Charge Review"
+        findings.loc[uncertain, "Potential Exposure"] = float("nan")
+        findings.loc[uncertain, "Priority"] = "Review"
+
     findings["Status"] = "Requires Review"
+    if "Credit Match Status" in findings:
+        matched = findings["Credit Match Status"].eq("Matched Full Reversal")
+        findings.loc[matched, "Status"] = "Matched Full Reversal"
+
 
     return tag_duplicate_findings(findings.reset_index(drop=True))
 
@@ -164,57 +186,10 @@ def generate_audit_summary(
     return summary
 
 
-def detect_exact_duplicate_charges(
-    invoice: pd.DataFrame,
-) -> pd.DataFrame:
+def detect_exact_duplicate_charges(invoice: pd.DataFrame) -> pd.DataFrame:
+    """Match positive charges, using charge type when available.
+
+    Is Duplicate remains the original repeated-AWB diagnostic for workbook
+    compatibility. Findings use the more precise charge-level checks.
     """
-    Identify repeated positive charges with matching
-    AWB, carrier and billed amount.
-
-    These are potential duplicates requiring review,
-    not confirmed billing errors.
-    """
-
-    result = invoice.copy()
-
-    result["AWB"] = (
-        result["AWB"]
-        .astype("string")
-        .str.strip()
-        .str.replace(r"\s+", " ", regex=True)
-    )
-
-    if "Carrier" in result.columns:
-        result["Carrier"] = (
-            result["Carrier"]
-            .astype("string")
-            .str.strip()
-            .str.upper()
-        )
-    else:
-        result["Carrier"] = pd.NA
-
-    if "Total" not in result.columns:
-        result["Is Exact Duplicate Charge"] = False
-        return result
-
-    amounts = pd.to_numeric(result["Total"], errors="coerce")
-
-    # Compare normalized numeric amounts without changing
-    # the original invoice values.
-    comparison_data = pd.DataFrame({
-        "AWB": result["AWB"],
-        "Carrier": result["Carrier"],
-        "Amount": amounts,
-    })
-
-    repeated = comparison_data.duplicated(
-        subset=["AWB", "Carrier", "Amount"],
-        keep="first",
-    )
-
-    result["Is Exact Duplicate Charge"] = (
-        repeated & (amounts > 0)
-    )
-
-    return result
+    return analyze_charges(invoice)

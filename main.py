@@ -202,6 +202,8 @@ def _execute_audit(args, run):
     )
 
     findings = generate_duplicate_findings(audited_invoice)
+    if "Charge Type" not in invoice:
+        print("Duplicate matching basis: legacy; Charge Type is unavailable. Review potential duplicates before claiming.")
     summary = generate_audit_summary(audited_invoice, findings)
     run.complete_rules(*DUPLICATE_RULE_IDS)
     # Reconcile duplicate and rate exposures when a rate card is provided.
@@ -236,6 +238,10 @@ def _execute_audit(args, run):
     run.set_summary({
         "invoice_lines": int(len(invoice)),
         "duplicate_findings": int(len(findings)),
+        "charge_type_available": "Charge Type" in invoice,
+        "credit_status_counts": ({str(k): int(v) for k, v in audited_invoice["Credit Match Status"].value_counts().items()}
+                                 if "Credit Match Status" in audited_invoice else {}),
+        "charge_review_lines": int(audited_invoice["Needs Charge Review"].sum()),
         "rate_status_counts": ({str(k): int(v) for k, v in rate_results["Rate Status"].value_counts().items()}
                                if rate_results is not None else {}),
         "held_lines": (int(combined_exposure["Payment Treatment"].eq("Hold").sum())
