@@ -29,3 +29,5 @@ sample_data/private/
 sample_data/*.xlsx
 reports/*.zip
 .xlsx
+inspect_formulas.py
+*.xlsx
