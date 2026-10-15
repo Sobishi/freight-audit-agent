@@ -27,3 +27,5 @@ __pycache__/
 data/private/
 sample_data/private/
 sample_data/*.xlsx
+reports/*.zip
+.xlsx
