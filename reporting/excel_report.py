@@ -121,6 +121,8 @@ combined_exposure: pd.DataFrame | None = None,
                 "Duplicate Exposure",
                 "Rate Exposure",
                 "Combined Potential Exposure",
+                "Rate Exposure Status",
+                "Payment Treatment",
             ]
 
             available_columns = [
@@ -148,6 +150,10 @@ combined_exposure: pd.DataFrame | None = None,
                 "Rate Difference",
                 "Potential Rate Overcharge",
                 "Rate Status",
+                "Rate Basis",
+                "Rule IDs",
+                "Rule Versions",
+                "Rule Descriptions",
                 "Has Missing Invoice Information",
                 "Has Missing Base Freight",
             ]

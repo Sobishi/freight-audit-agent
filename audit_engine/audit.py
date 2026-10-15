@@ -1,4 +1,5 @@
 import pandas as pd
+from audit_engine.rules import tag_duplicate_findings
 
 
 def detect_duplicates(invoice: pd.DataFrame) -> pd.DataFrame:
@@ -47,6 +48,9 @@ def generate_duplicate_findings(
     ].copy()
 
     findings = pd.DataFrame(index=duplicates.index)
+
+    if "Invoice Line ID" in duplicates.columns:
+        findings["Invoice Line ID"] = duplicates["Invoice Line ID"]
 
     findings["Finding Type"] = "Potential Duplicate Billing"
     findings["AWB"] = duplicates["AWB"]
@@ -120,7 +124,7 @@ def generate_duplicate_findings(
 
     findings["Status"] = "Requires Review"
 
-    return findings.reset_index(drop=True)
+    return tag_duplicate_findings(findings.reset_index(drop=True))
 
 
 def generate_audit_summary(

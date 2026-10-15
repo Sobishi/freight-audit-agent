@@ -1,5 +1,9 @@
 import pandas as pd
 import argparse
+import re
+from pathlib import Path
+from audit_engine.run_log import AuditRun
+from audit_engine.rules import DUPLICATE_RULE_IDS, RATE_RULE_IDS
 from audit_engine.exposure import calculate_combined_exposure
 from reporting.excel_report import generate_excel_report
 from data.carrier_config import DEFAULT_CONFIG_DIR, load_carrier_config
@@ -69,11 +73,37 @@ def main():
         ),
     )
 
+    parser.add_argument(
+        "--log-dir", default="logs",
+        help="Folder for local audit run records (default: logs).",
+    )
     args = parser.parse_args()
+    with AuditRun(args.log_dir, settings={
+        "carrier_id": args.carrier,
+        "sheet": args.sheet,
+        "header_row": args.header_row,
+        "allow_total_fallback": args.allow_total_fallback,
+    }) as run:
+        run.stage = "input_snapshot"
+        run.add_input("invoice", args.invoice_file)
+        if args.rates:
+            run.add_input("rate_card", args.rates)
+        if args.carrier:
+            # Do not form a path from an invalid carrier id.
+            if re.fullmatch(r"[a-z0-9_]+", args.carrier):
+                root = Path(args.config_dir)
+                run.add_input("carrier_profile", root / "carriers" / f"{args.carrier}.yaml")
+                run.add_input("invoice_mapping", root / "mappings" / f"{args.carrier}_invoice.yaml")
+        _execute_audit(args, run)
+    print(f"Audit run log: {run.path}")
+
+
+def _execute_audit(args, run):
 
     print("\nFREIGHT AUDIT AGENT")
     print("-------------------")
 
+    run.stage = "invoice_loading"
     profile = None
 
     if args.carrier:
@@ -106,9 +136,12 @@ def main():
             header_row=args.header_row,
         )
 
+    run.data["settings"]["effective_tolerance"] = profile.tolerance if profile else 0.01
+    run.data["settings"]["profile_currency"] = profile.currency if profile else None
     rate_results = None
     # Load and validate carrier rates when a rate card is provided.
     if args.rates:
+        run.stage = "rate_card_loading"
         if args.rates.lower().endswith(".csv"):
             rate_card = pd.read_csv(args.rates)
         elif args.rates.lower().endswith((".xlsx", ".xls")):
@@ -118,6 +151,8 @@ def main():
                 "Unsupported rate card format. Use CSV or Excel."
             )
 
+        run.stage = "rate_validation"
+        run.begin_rules(*RATE_RULE_IDS)
         try:
             rate_results = validate_freight_rates(
                 invoice,
@@ -135,6 +170,7 @@ def main():
                 )
             raise
 
+        run.complete_rules(*RATE_RULE_IDS)
         print("\nFREIGHT RATE VALIDATION")
         print("-----------------------")
 
@@ -157,6 +193,8 @@ def main():
             f"{rate_results['Potential Rate Overcharge'].sum():,.2f}"
         )
 
+    run.stage = "duplicate_checks"
+    run.begin_rules(*DUPLICATE_RULE_IDS)
     audited_invoice = detect_duplicates(invoice)
 
     audited_invoice = detect_exact_duplicate_charges(
@@ -165,10 +203,12 @@ def main():
 
     findings = generate_duplicate_findings(audited_invoice)
     summary = generate_audit_summary(audited_invoice, findings)
+    run.complete_rules(*DUPLICATE_RULE_IDS)
     # Reconcile duplicate and rate exposures when a rate card is provided.
     combined_exposure = None
 
     if rate_results is not None:
+        run.stage = "exposure_calculation"
         combined_exposure = calculate_combined_exposure(
             audited_invoice,
             rate_results,
@@ -193,16 +233,27 @@ def main():
                 f"Lines on hold, exposure unknown: {len(held)} "
                 f"(billed value {held['Total'].sum():,.2f})"
             )
+    run.set_summary({
+        "invoice_lines": int(len(invoice)),
+        "duplicate_findings": int(len(findings)),
+        "rate_status_counts": ({str(k): int(v) for k, v in rate_results["Rate Status"].value_counts().items()}
+                               if rate_results is not None else {}),
+        "held_lines": (int(combined_exposure["Payment Treatment"].eq("Hold").sum())
+                       if combined_exposure is not None else None),
+    })
+    summary["Audit Run ID"] = run.run_id
     if args.output:
+        run.stage = "report_generation"
         report_path = generate_excel_report(
-    audited_invoice,
-    findings,
-    summary,
-    args.output,
-    combined_exposure=combined_exposure,
-    rate_results=rate_results,
-)
+            audited_invoice,
+            findings,
+            summary,
+            args.output,
+            combined_exposure=combined_exposure,
+            rate_results=rate_results,
+        )
 
+        run.add_output("excel_report", report_path)
         print(f"\nExcel audit report saved to: {report_path}")
     duplicate_lines = audited_invoice[
         audited_invoice["Is Duplicate"]

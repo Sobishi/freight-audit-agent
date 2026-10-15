@@ -34,3 +34,7 @@ inspect_formulas.py
 *.xlsx
 bundle.py
 project_bundle.txt
+bundle.py
+project_bundle.txt
+logs/
+*patch
