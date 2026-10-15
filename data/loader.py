@@ -1,5 +1,6 @@
 from pathlib import Path
 import pandas as pd
+from data.mapping import standardize_invoice
 from data.schema import (
     identify_columns,
     normalize_columns,
@@ -143,6 +144,62 @@ def load_invoice(file_path, sheet_name=None, header_row=None):
         range(1, len(invoice) + 1),
     )
     return invoice
+
+def load_invoice_with_mapping(
+    file_path,
+    mapping,
+    sheet_name=None,
+    header_row=None,
+):
+    """
+    Load a carrier invoice and convert it to the standard format
+    using that carrier's mapping.
+
+    header_row and sheet_name override the mapping when given.
+    Row numbers count physical lines, starting from 0.
+    Only empty cells are treated as missing, so a code such as "NA"
+    is never mistaken for a blank.
+    """
+
+    file_path = Path(file_path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(
+            f"Invoice file not found: {file_path}"
+        )
+
+    header = mapping.header_row if header_row is None else header_row
+    extension = file_path.suffix.lower()
+
+    if extension == ".csv":
+        raw = pd.read_csv(
+            file_path,
+            header=header,
+            dtype=str,
+            keep_default_na=False,
+            na_values=[""],
+            skip_blank_lines=False,
+        )
+
+    elif extension in {".xlsx", ".xls"}:
+        sheet = sheet_name if sheet_name is not None else mapping.sheet
+
+        raw = pd.read_excel(
+            file_path,
+            sheet_name=sheet if sheet is not None else 0,
+            header=header,
+            dtype=str,
+            keep_default_na=False,
+            na_values=[""],
+        )
+
+    else:
+        raise ValueError(
+            f"Unsupported file format: {extension}"
+        )
+
+    return standardize_invoice(raw, mapping)
+
 
 def detect_header_row(file_path, sheet_name=0, max_rows=20):
     """

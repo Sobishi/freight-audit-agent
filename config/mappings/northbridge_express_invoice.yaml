@@ -1,0 +1,16 @@
+# Maps Northbridge Express invoice columns to the standard invoice format.
+# Left side: column name in the carrier file. Right side: standard field.
+carrier_id: northbridge_express
+carrier_name: Northbridge Express
+header_row: 0
+columns:
+  "Invoice No": Invoice Ref
+  "Tracking Number": AWB
+  "Ship Date": Ship Date
+  "Service": Service Type
+  "Destination Zone": Billed Zone
+  "Billed Weight": Billed Weight
+  "Transportation Charge": Base Freight
+  "Fuel Charge": Surcharge Amount
+  "Tax": Tax Amount
+  "Invoice Total": Total

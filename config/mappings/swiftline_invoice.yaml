@@ -1,0 +1,18 @@
+# Maps Swiftline invoice columns to the standard invoice format.
+carrier_id: swiftline
+carrier_name: Swiftline
+header_row: 0
+date_format: "%d/%m/%Y"      # Swiftline writes day first
+decimal: "."
+thousands: ","
+columns:
+  "Inv Ref": Invoice Ref
+  "Waybill No": AWB
+  "Dispatch Date": Ship Date
+  "Product": Service Type
+  "Zone": Billed Zone
+  "Chargeable Kg": Billed Weight
+  "Freight": Base Freight
+  "Surcharge": Surcharge Amount
+  "VAT": Tax Amount
+  "Amount Due": Total

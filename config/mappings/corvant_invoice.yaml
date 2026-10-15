@@ -1,0 +1,16 @@
+# Maps Corvant invoice columns to the standard invoice format.
+# The real header sits on the third line of the file (row 2, counting from 0).
+carrier_id: corvant
+carrier_name: Corvant
+header_row: 2
+columns:
+  "Invoice ID": Invoice Ref
+  "Consignment ID": AWB
+  "Shipped": Ship Date
+  "Svc Level": Service Type
+  "Pcs": Pieces
+  "Wt": Billed Weight
+  "Base": Base Freight
+  "Fuel": Surcharge Amount
+  "GST": Tax Amount
+  "Gross": Total

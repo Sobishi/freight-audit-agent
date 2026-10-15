@@ -2,7 +2,8 @@ import pandas as pd
 import argparse
 from audit_engine.exposure import calculate_combined_exposure
 from reporting.excel_report import generate_excel_report
-from data.loader import load_invoice
+from data.carrier_config import DEFAULT_CONFIG_DIR, load_carrier_config
+from data.loader import load_invoice, load_invoice_with_mapping
 from audit_engine.rate_validation import validate_freight_rates
 from audit_engine.audit import (
     detect_duplicates,
@@ -44,6 +45,21 @@ def main():
     )
 
     parser.add_argument(
+        "--carrier",
+        default=None,
+        help=(
+            "Carrier id. Loads that carrier's profile and invoice mapping "
+            "from the config folder, instead of guessing column names."
+        ),
+    )
+
+    parser.add_argument(
+        "--config-dir",
+        default=str(DEFAULT_CONFIG_DIR),
+        help="Folder holding carriers/ and mappings/ (default: config).",
+    )
+
+    parser.add_argument(
         "--allow-total-fallback",
         action="store_true",
         help=(
@@ -58,11 +74,38 @@ def main():
     print("\nFREIGHT AUDIT AGENT")
     print("-------------------")
 
-    invoice = load_invoice(
-        file_path=args.invoice_file,
-        sheet_name=args.sheet,
-        header_row=args.header_row,
-    )
+    profile = None
+
+    if args.carrier:
+        try:
+            carrier_config = load_carrier_config(
+                args.carrier,
+                args.config_dir,
+            )
+
+            profile = carrier_config.profile
+
+            invoice = load_invoice_with_mapping(
+                args.invoice_file,
+                carrier_config.mapping,
+                sheet_name=args.sheet,
+                header_row=args.header_row,
+            )
+        except (FileNotFoundError, ValueError) as error:
+            raise SystemExit(f"Error: {error}")
+
+        print(
+            f"Carrier profile: {profile.carrier_name} "
+            f"({profile.carrier_id})"
+        )
+
+    else:
+        invoice = load_invoice(
+            file_path=args.invoice_file,
+            sheet_name=args.sheet,
+            header_row=args.header_row,
+        )
+
     rate_results = None
     # Load and validate carrier rates when a rate card is provided.
     if args.rates:
@@ -79,6 +122,7 @@ def main():
             rate_results = validate_freight_rates(
                 invoice,
                 rate_card,
+                tolerance=profile.tolerance if profile else 0.01,
                 require_base_freight=not args.allow_total_fallback,
             )
         except ValueError as error:

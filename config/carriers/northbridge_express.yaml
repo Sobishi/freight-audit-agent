@@ -1,0 +1,19 @@
+# Carrier profile. Values below are ILLUSTRATIVE DEMO VALUES.
+# Replace them with the terms in your own contract before real use.
+carrier_id: northbridge_express
+carrier_name: Northbridge Express
+currency: USD
+pricing_method: parcel_zone_weight
+unit_system: metric
+dim_divisor: 5000            # cubic cm per kg
+rounding:                    # 0.5 kg steps up to 10 kg, then 1 kg steps
+  step_low: 0.5
+  threshold: 10
+  step_high: 1
+tolerance: 0.01              # largest difference still treated as a match
+max_band: 30
+excess_band_code: EXCESS_KG
+tax_rate: 0.10
+tax_inclusive: false
+surcharge_basis: percent_of_freight
+valid_from: 2026-01-01

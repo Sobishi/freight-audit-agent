@@ -1,0 +1,4 @@
+Invoice No,Tracking Number,Ship Date,Service,Destination Zone,Billed Weight,Transportation Charge,Fuel Charge,Tax,Invoice Total
+NBX-2609,NBX1000000001,2026-09-01,Express,Z2,4.0,32.50,5.20,3.77,41.47
+NBX-2609,NBX1000000002,2026-09-01,Express,Z3,7.0,45.00,7.20,5.22,57.42
+NBX-2609,NBX1000000003,2026-09-02,Economy,Z1,2.5,18.00,2.88,2.09,22.97

@@ -1,0 +1,16 @@
+# Carrier profile. ILLUSTRATIVE DEMO VALUES. Replace before real use.
+carrier_id: swiftline
+carrier_name: Swiftline
+currency: USD
+pricing_method: parcel_zone_weight
+unit_system: metric
+dim_divisor: 6000
+rounding:                    # 1 kg steps at all weights
+  step_low: 1
+  threshold: 10
+  step_high: 1
+tolerance: 0.01
+tax_rate: 0.075
+tax_inclusive: false
+surcharge_basis: percent_of_freight
+valid_from: 2026-01-01

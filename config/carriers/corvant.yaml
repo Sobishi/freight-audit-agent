@@ -1,0 +1,16 @@
+# Carrier profile. ILLUSTRATIVE DEMO VALUES. Replace before real use.
+carrier_id: corvant
+carrier_name: Corvant
+currency: USD
+pricing_method: parcel_zone_weight
+unit_system: metric
+dim_divisor: 5000
+rounding:                    # 0.5 kg steps up to 20 kg, then 1 kg steps
+  step_low: 0.5
+  threshold: 20
+  step_high: 1
+tolerance: 0.01
+tax_rate: 0.10
+tax_inclusive: false
+surcharge_basis: percent_of_freight
+valid_from: 2026-01-01
