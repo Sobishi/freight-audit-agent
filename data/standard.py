@@ -31,6 +31,12 @@ STANDARD_INVOICE_FIELDS = {
     "Pieces": NUMBER,
     "Billed Weight": NUMBER,
     "Weight Unit": TEXT,
+    "Billed Weight Unit": TEXT,
+    "Actual Weight": NUMBER,
+    "Length": NUMBER,
+    "Width": NUMBER,
+    "Height": NUMBER,
+    "Dimension Unit": TEXT,
     "Base Freight": NUMBER,
     "Surcharge Amount": NUMBER,
     "Tax Amount": NUMBER,
@@ -45,3 +51,4 @@ GENERATED_FIELDS = ("Invoice Line ID", "Carrier ID")
 REQUIRED_MAPPED_FIELDS = ("AWB", "Total")
 
 WEIGHT_UNITS = ("kg", "lb")
+DIMENSION_UNITS = ("cm", "in")

@@ -8,6 +8,7 @@ from pandas.api import types as pandas_types
 from data.schema import clean_column_name
 from data.standard import (
     DATE,
+    DIMENSION_UNITS,
     NUMBER,
     REQUIRED_MAPPED_FIELDS,
     STANDARD_INVOICE_FIELDS,
@@ -85,10 +86,17 @@ def _validate_default(name, kind, value):
     if name == "Currency" and not _CURRENCY_PATTERN.match(value.strip().upper()):
         raise ValueError(f"default for 'Currency' must be a code such as USD, found {value!r}.")
 
-    if name == "Weight Unit" and value.strip().lower() not in WEIGHT_UNITS:
+    if name in ("Weight Unit", "Billed Weight Unit") and value.strip().lower() not in WEIGHT_UNITS:
         raise ValueError(
             f"default for 'Weight Unit' must be one of {', '.join(WEIGHT_UNITS)}, "
             f"found {value!r}."
+        )
+
+
+    if name == "Dimension Unit" and value.strip().lower() not in DIMENSION_UNITS:
+        raise ValueError(
+            f"default for 'Dimension Unit' must be one of "
+            f"{', '.join(DIMENSION_UNITS)}, found {value!r}."
         )
 
 
@@ -432,6 +440,7 @@ def standardize_invoice(raw, mapping, keep_unmapped=False):
     _check_awb(result, resolved)
     _check_currency(result)
     _check_weight_unit(result)
+    _check_dimension_unit(result)
 
     if keep_unmapped:
         used = set(resolved.values())
@@ -475,17 +484,50 @@ def _check_currency(result):
 
 
 def _check_weight_unit(result):
-    if "Weight Unit" not in result.columns:
+    """Normalize and validate actual and billed weight units."""
+    for field in ("Weight Unit", "Billed Weight Unit"):
+        if field not in result.columns:
+            continue
+
+        result[field] = result[field].map(
+            lambda value: value.strip().lower()
+            if isinstance(value, str) else value,
+            na_action="ignore",
+        )
+
+        bad = sorted({
+            str(value)
+            for value in result[field].dropna()
+            if value not in WEIGHT_UNITS
+        })
+
+        if bad:
+            raise ValueError(
+                f"{field} has invalid value(s): {', '.join(bad)}. "
+                f"Use one of {', '.join(WEIGHT_UNITS)}."
+            )
+
+
+
+def _check_dimension_unit(result):
+    """Normalize and validate mapped dimension units."""
+    if "Dimension Unit" not in result.columns:
         return
 
-    result["Weight Unit"] = result["Weight Unit"].map(
-        lambda value: value.lower(), na_action="ignore"
+    result["Dimension Unit"] = result["Dimension Unit"].map(
+        lambda value: value.strip().lower()
+        if isinstance(value, str) else value,
+        na_action="ignore",
     )
 
-    bad = sorted({v for v in result["Weight Unit"].dropna() if v not in WEIGHT_UNITS})
+    bad = sorted({
+        str(value)
+        for value in result["Dimension Unit"].dropna()
+        if value not in DIMENSION_UNITS
+    })
 
     if bad:
         raise ValueError(
-            f"Weight Unit has invalid value(s): {', '.join(bad)}. "
-            f"Use one of {', '.join(WEIGHT_UNITS)}."
+            f"Dimension Unit has invalid value(s): {', '.join(bad)}. "
+            f"Use one of {', '.join(DIMENSION_UNITS)}."
         )
