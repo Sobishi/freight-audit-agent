@@ -1,10 +1,12 @@
 import pandas as pd
 import argparse
+import math
 import re
 from pathlib import Path
 from audit_engine.run_log import AuditRun
 from audit_engine.rules import DUPLICATE_RULE_IDS, RATE_RULE_IDS
 from audit_engine.exposure import calculate_combined_exposure
+from audit_engine.weight_reporting import generate_weight_validation_results
 from reporting.excel_report import generate_excel_report
 from data.carrier_config import DEFAULT_CONFIG_DIR, load_carrier_config
 from data.loader import load_invoice, load_invoice_with_mapping
@@ -77,12 +79,60 @@ def main():
         "--log-dir", default="logs",
         help="Folder for local audit run records (default: logs).",
     )
+    parser.add_argument(
+        "--weight-tolerance",
+        type=float,
+        default=None,
+        help=(
+            "Enable weight validation with an explicit absolute "
+            "tolerance in kilograms."
+        ),
+    )
+
+    parser.add_argument(
+        "--package-count-verified",
+        action="store_true",
+        help=(
+            "Confirm that invoice package counts have been "
+            "independently verified."
+        ),
+    )
+
     args = parser.parse_args()
+
+    if args.weight_tolerance is not None:
+        if (
+            not math.isfinite(args.weight_tolerance)
+            or args.weight_tolerance < 0
+        ):
+            parser.error(
+                "--weight-tolerance must be a finite, "
+                "nonnegative number."
+            )
+
+        if not args.carrier:
+            parser.error(
+                "Weight validation requires --carrier."
+            )
+
+        if not args.package_count_verified:
+            parser.error(
+                "Weight validation requires --package-count-verified."
+            )
+
+    elif args.package_count_verified:
+        parser.error(
+            "--package-count-verified requires --weight-tolerance."
+        )
+
     with AuditRun(args.log_dir, settings={
         "carrier_id": args.carrier,
         "sheet": args.sheet,
         "header_row": args.header_row,
         "allow_total_fallback": args.allow_total_fallback,
+        "weight_validation_enabled": args.weight_tolerance is not None,
+        "weight_tolerance_kg": args.weight_tolerance,
+        "package_count_verified": args.package_count_verified,
     }) as run:
         run.stage = "input_snapshot"
         run.add_input("invoice", args.invoice_file)
@@ -139,6 +189,26 @@ def _execute_audit(args, run):
     run.data["settings"]["effective_tolerance"] = profile.tolerance if profile else 0.01
     run.data["settings"]["profile_currency"] = profile.currency if profile else None
     rate_results = None
+    weight_results = None
+
+    if args.weight_tolerance is not None:
+        run.stage = "weight_validation"
+
+        weight_results = generate_weight_validation_results(
+            invoice,
+            profile=profile,
+            package_count_verified=args.package_count_verified,
+            weight_tolerance=args.weight_tolerance,
+        )
+
+        print("\nWEIGHT VALIDATION")
+        print("-----------------")
+        print(
+            weight_results["Weight Status"]
+            .value_counts()
+            .to_string()
+        )
+
     # Load and validate carrier rates when a rate card is provided.
     if args.rates:
         run.stage = "rate_card_loading"
@@ -237,6 +307,15 @@ def _execute_audit(args, run):
             )
     run.set_summary({
         "invoice_lines": int(len(invoice)),
+        "weight_status_counts": (
+            {
+                str(status): int(count)
+                for status, count in
+                weight_results["Weight Status"].value_counts().items()
+            }
+            if weight_results is not None
+            else {}
+        ),
         "duplicate_findings": int(len(findings)),
         "charge_type_available": "Charge Type" in invoice,
         "credit_status_counts": ({str(k): int(v) for k, v in audited_invoice["Credit Match Status"].value_counts().items()}
@@ -257,6 +336,7 @@ def _execute_audit(args, run):
             args.output,
             combined_exposure=combined_exposure,
             rate_results=rate_results,
+            weight_results=weight_results,
         )
 
         run.add_output("excel_report", report_path)

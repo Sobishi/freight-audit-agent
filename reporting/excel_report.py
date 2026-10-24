@@ -11,6 +11,7 @@ def generate_excel_report(
     output_path: str,
 combined_exposure: pd.DataFrame | None = None,
     rate_results: pd.DataFrame | None = None,
+    weight_results: pd.DataFrame | None = None,
 ) -> Path:
     """
     Generate an Excel freight audit report.
@@ -109,6 +110,14 @@ combined_exposure: pd.DataFrame | None = None,
             sheet_name="Invoice Data",
             index=False,
         )
+
+        # Weight evidence is review information, not financial exposure.
+        if weight_results is not None:
+            weight_results.to_excel(
+                writer,
+                sheet_name="Weight Validation",
+                index=False,
+            )
         # Add a detailed reconciliation worksheet when available.
         if combined_exposure is not None:
             reconciliation_columns = [
