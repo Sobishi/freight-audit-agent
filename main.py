@@ -7,6 +7,7 @@ from audit_engine.run_log import AuditRun
 from audit_engine.rules import DUPLICATE_RULE_IDS, RATE_RULE_IDS
 from audit_engine.exposure import calculate_combined_exposure
 from audit_engine.weight_reporting import generate_weight_validation_results
+from audit_engine.contract_pricing_reporting import generate_contract_pricing_results
 from reporting.excel_report import generate_excel_report
 from data.carrier_config import DEFAULT_CONFIG_DIR, load_carrier_config
 from data.loader import load_invoice, load_invoice_with_mapping
@@ -48,6 +49,15 @@ def main():
     parser.add_argument(
         "--rates",
         help="Path to a CSV or Excel file containing agreed carrier rates.",
+    )
+
+    parser.add_argument(
+        "--contract-rates",
+        default=None,
+        help=(
+            "Path to a CSV or Excel contract rate card for "
+            "R4 weight-based base freight pricing."
+        ),
     )
 
     parser.add_argument(
@@ -100,6 +110,14 @@ def main():
 
     args = parser.parse_args()
 
+    if (
+        args.contract_rates is not None
+        and args.weight_tolerance is None
+    ):
+        parser.error(
+            "--contract-rates requires --weight-tolerance."
+        )
+
     if args.weight_tolerance is not None:
         if (
             not math.isfinite(args.weight_tolerance)
@@ -125,6 +143,28 @@ def main():
             "--package-count-verified requires --weight-tolerance."
         )
 
+    if args.contract_rates is not None:
+        contract_extension = Path(
+            args.contract_rates
+        ).suffix.lower()
+
+        if contract_extension not in {
+            ".csv",
+            ".xlsx",
+            ".xls",
+        }:
+            parser.error(
+                "Unsupported contract rate card format. "
+                "Use CSV or Excel."
+            )
+
+        contract_path = Path(args.contract_rates)
+
+        if not contract_path.is_file():
+            parser.error(
+                f"Contract rate card not found: {contract_path}"
+            )
+
     with AuditRun(args.log_dir, settings={
         "carrier_id": args.carrier,
         "sheet": args.sheet,
@@ -138,6 +178,11 @@ def main():
         run.add_input("invoice", args.invoice_file)
         if args.rates:
             run.add_input("rate_card", args.rates)
+        if args.contract_rates:
+            run.add_input(
+                "contract_rate_card",
+                args.contract_rates,
+            )
         if args.carrier:
             # Do not form a path from an invalid carrier id.
             if re.fullmatch(r"[a-z0-9_]+", args.carrier):
@@ -190,6 +235,7 @@ def _execute_audit(args, run):
     run.data["settings"]["profile_currency"] = profile.currency if profile else None
     rate_results = None
     weight_results = None
+    contract_pricing_results = None
 
     if args.weight_tolerance is not None:
         run.stage = "weight_validation"
@@ -205,6 +251,49 @@ def _execute_audit(args, run):
         print("-----------------")
         print(
             weight_results["Weight Status"]
+            .value_counts()
+            .to_string()
+        )
+
+    # R4 contract pricing uses verified R3 weight evidence.
+    if args.contract_rates:
+        if weight_results is None:
+            raise SystemExit(
+                "Error: contract pricing requires R3 weight evidence."
+            )
+
+        run.stage = "contract_rate_card_loading"
+
+        contract_path = Path(args.contract_rates)
+
+        try:
+            if contract_path.suffix.lower() == ".csv":
+                contract_rates = pd.read_csv(contract_path)
+            elif contract_path.suffix.lower() in {".xlsx", ".xls"}:
+                contract_rates = pd.read_excel(contract_path)
+            else:
+                raise ValueError(
+                    "Unsupported contract rate card format. "
+                    "Use CSV or Excel."
+                )
+        except (OSError, ValueError, ImportError) as error:
+            raise SystemExit(
+                f"Error loading contract rate card: {error}"
+            ) from error
+
+        run.stage = "contract_pricing"
+
+        contract_pricing_results = generate_contract_pricing_results(
+            invoice,
+            weight_results,
+            contract_rates,
+            tolerance=profile.tolerance if profile else 0.01,
+        )
+
+        print("\nCONTRACT PRICING")
+        print("----------------")
+        print(
+            contract_pricing_results["Pricing Status"]
             .value_counts()
             .to_string()
         )
@@ -316,6 +405,15 @@ def _execute_audit(args, run):
             if weight_results is not None
             else {}
         ),
+        "contract_pricing_status_counts": (
+            {
+                str(status): int(count)
+                for status, count in
+                contract_pricing_results["Pricing Status"].value_counts().items()
+            }
+            if contract_pricing_results is not None
+            else {}
+        ),
         "duplicate_findings": int(len(findings)),
         "charge_type_available": "Charge Type" in invoice,
         "credit_status_counts": ({str(k): int(v) for k, v in audited_invoice["Credit Match Status"].value_counts().items()}
@@ -337,6 +435,7 @@ def _execute_audit(args, run):
             combined_exposure=combined_exposure,
             rate_results=rate_results,
             weight_results=weight_results,
+            contract_pricing_results=contract_pricing_results,
         )
 
         run.add_output("excel_report", report_path)

@@ -12,6 +12,7 @@ def generate_excel_report(
 combined_exposure: pd.DataFrame | None = None,
     rate_results: pd.DataFrame | None = None,
     weight_results: pd.DataFrame | None = None,
+    contract_pricing_results: pd.DataFrame | None = None,
 ) -> Path:
     """
     Generate an Excel freight audit report.
@@ -118,6 +119,14 @@ combined_exposure: pd.DataFrame | None = None,
                 sheet_name="Weight Validation",
                 index=False,
             )
+        # R4 contract pricing is reported separately from combined exposure.
+        if contract_pricing_results is not None:
+            contract_pricing_results.to_excel(
+                writer,
+                sheet_name="Contract Pricing",
+                index=False,
+            )
+
         # Add a detailed reconciliation worksheet when available.
         if combined_exposure is not None:
             reconciliation_columns = [
