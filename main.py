@@ -8,6 +8,8 @@ from audit_engine.rules import DUPLICATE_RULE_IDS, RATE_RULE_IDS
 from audit_engine.exposure import calculate_combined_exposure
 from audit_engine.weight_reporting import generate_weight_validation_results
 from audit_engine.contract_pricing_reporting import generate_contract_pricing_results
+from audit_engine.delivery_reporting import generate_delivery_evidence_results
+from data.delivery_loader import load_delivery_evidence_workbook
 from reporting.excel_report import generate_excel_report
 from data.carrier_config import DEFAULT_CONFIG_DIR, load_carrier_config
 from data.loader import load_invoice, load_invoice_with_mapping
@@ -49,6 +51,15 @@ def main():
     parser.add_argument(
         "--rates",
         help="Path to a CSV or Excel file containing agreed carrier rates.",
+    )
+
+    parser.add_argument(
+        "--delivery-evidence",
+        default=None,
+        help=(
+            "Excel workbook containing Internal Tracker, "
+            "Carrier Tracking or Alt POD worksheets."
+        ),
     )
 
     parser.add_argument(
@@ -109,6 +120,19 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if args.delivery_evidence is not None:
+        evidence_path = Path(args.delivery_evidence)
+
+        if not evidence_path.is_file():
+            parser.error(
+                f"Delivery evidence file not found: {evidence_path}"
+            )
+
+        if evidence_path.suffix.lower() not in {".xlsx", ".xls"}:
+            parser.error(
+                "Unsupported delivery evidence format. Use Excel."
+            )
 
     if (
         args.contract_rates is not None
@@ -183,6 +207,11 @@ def main():
                 "contract_rate_card",
                 args.contract_rates,
             )
+        if args.delivery_evidence:
+            run.add_input(
+                "delivery_evidence",
+                args.delivery_evidence,
+            )
         if args.carrier:
             # Do not form a path from an invalid carrier id.
             if re.fullmatch(r"[a-z0-9_]+", args.carrier):
@@ -236,6 +265,35 @@ def _execute_audit(args, run):
     rate_results = None
     weight_results = None
     contract_pricing_results = None
+    delivery_evidence_results = None
+    delivery_evidence_path = getattr(args, "delivery_evidence", None)
+
+    if delivery_evidence_path:
+        run.stage = "delivery_evidence_loading"
+
+        try:
+            evidence_data = load_delivery_evidence_workbook(
+                delivery_evidence_path
+            )
+        except (OSError, ValueError, ImportError) as error:
+            raise SystemExit(
+                f"Error loading delivery evidence: {error}"
+            ) from error
+
+        run.stage = "delivery_evidence_validation"
+
+        delivery_evidence_results = generate_delivery_evidence_results(
+            invoice,
+            **evidence_data,
+        )
+
+        print("\nDELIVERY EVIDENCE")
+        print("-----------------")
+        print(
+            delivery_evidence_results["Delivery Status"]
+            .value_counts()
+            .to_string()
+        )
 
     if args.weight_tolerance is not None:
         run.stage = "weight_validation"
@@ -405,6 +463,15 @@ def _execute_audit(args, run):
             if weight_results is not None
             else {}
         ),
+        "delivery_status_counts": (
+            {
+                str(status): int(count)
+                for status, count in
+                delivery_evidence_results["Delivery Status"].value_counts().items()
+            }
+            if delivery_evidence_results is not None
+            else {}
+        ),
         "contract_pricing_status_counts": (
             {
                 str(status): int(count)
@@ -436,6 +503,7 @@ def _execute_audit(args, run):
             rate_results=rate_results,
             weight_results=weight_results,
             contract_pricing_results=contract_pricing_results,
+            delivery_evidence_results=delivery_evidence_results,
         )
 
         run.add_output("excel_report", report_path)

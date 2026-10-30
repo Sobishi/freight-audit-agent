@@ -13,6 +13,7 @@ combined_exposure: pd.DataFrame | None = None,
     rate_results: pd.DataFrame | None = None,
     weight_results: pd.DataFrame | None = None,
     contract_pricing_results: pd.DataFrame | None = None,
+    delivery_evidence_results: pd.DataFrame | None = None,
 ) -> Path:
     """
     Generate an Excel freight audit report.
@@ -124,6 +125,14 @@ combined_exposure: pd.DataFrame | None = None,
             contract_pricing_results.to_excel(
                 writer,
                 sheet_name="Contract Pricing",
+                index=False,
+            )
+
+        # R5 delivery evidence is review information, not financial exposure.
+        if delivery_evidence_results is not None:
+            delivery_evidence_results.to_excel(
+                writer,
+                sheet_name="Delivery Evidence",
                 index=False,
             )
 
