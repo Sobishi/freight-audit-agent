@@ -14,6 +14,9 @@ combined_exposure: pd.DataFrame | None = None,
     weight_results: pd.DataFrame | None = None,
     contract_pricing_results: pd.DataFrame | None = None,
     delivery_evidence_results: pd.DataFrame | None = None,
+    surcharge_results: pd.DataFrame | None = None,
+    tax_results: pd.DataFrame | None = None,
+    final_payment_decisions: pd.DataFrame | None = None,
 ) -> Path:
     """
     Generate an Excel freight audit report.
@@ -24,6 +27,68 @@ combined_exposure: pd.DataFrame | None = None,
     - Invoice Data
     - Rate Validation (when a rate card is provided)
     """
+
+    if final_payment_decisions is not None:
+        if not isinstance(final_payment_decisions, pd.DataFrame):
+            raise TypeError(
+                "Final payment decisions must be a DataFrame."
+            )
+
+        if (
+            "Invoice Line ID" not in audited_invoice.columns
+            or "Invoice Line ID" not in final_payment_decisions.columns
+        ):
+            raise ValueError(
+                "Invoice Line ID is required for final payment decisions."
+            )
+
+        if (
+            not audited_invoice.columns.is_unique
+            or not final_payment_decisions.columns.is_unique
+        ):
+            raise ValueError(
+                "Duplicate column names in final payment decisions."
+            )
+
+        invoice_ids = audited_invoice["Invoice Line ID"]
+        decision_ids = final_payment_decisions["Invoice Line ID"]
+
+        if (
+            invoice_ids.isna().any()
+            or invoice_ids.duplicated().any()
+            or decision_ids.isna().any()
+            or decision_ids.duplicated().any()
+            or len(invoice_ids) != len(decision_ids)
+            or set(invoice_ids) != set(decision_ids)
+        ):
+            raise ValueError(
+                "Final payment decisions Invoice Line ID values "
+                "must uniquely match the audited invoice."
+            )
+
+        required_decision_columns = {
+            "Final Payment Treatment",
+            "Decision Completeness",
+            "Decision Reason",
+        }
+
+        missing = required_decision_columns.difference(
+            final_payment_decisions.columns
+        )
+
+        if missing:
+            raise ValueError(
+                "Final payment decisions missing columns: "
+                f"{sorted(missing)}"
+            )
+
+        # Export in audited invoice order, not input frame order.
+        final_payment_decisions = (
+            final_payment_decisions
+            .set_index("Invoice Line ID")
+            .loc[invoice_ids.tolist()]
+            .reset_index()
+        )
 
     output_file = Path(output_path)
 
@@ -113,6 +178,14 @@ combined_exposure: pd.DataFrame | None = None,
             index=False,
         )
 
+        # Final decisions remain separate from legacy exposure reconciliation.
+        if final_payment_decisions is not None:
+            final_payment_decisions.to_excel(
+                writer,
+                sheet_name="Final Payment Decisions",
+                index=False,
+            )
+
         # Weight evidence is review information, not financial exposure.
         if weight_results is not None:
             weight_results.to_excel(
@@ -133,6 +206,22 @@ combined_exposure: pd.DataFrame | None = None,
             delivery_evidence_results.to_excel(
                 writer,
                 sheet_name="Delivery Evidence",
+                index=False,
+            )
+
+        # R6 surcharge findings remain separate from combined exposure.
+        if surcharge_results is not None:
+            surcharge_results.to_excel(
+                writer,
+                sheet_name="Surcharge Validation",
+                index=False,
+            )
+
+        # R6 tax findings remain separate from combined exposure.
+        if tax_results is not None:
+            tax_results.to_excel(
+                writer,
+                sheet_name="Tax Validation",
                 index=False,
             )
 
