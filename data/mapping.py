@@ -290,7 +290,10 @@ def _number(values, mapping, label, required):
 
         numbers = pd.to_numeric(cleaned, errors="coerce").astype(float)
 
-    invalid = numbers.isna() & ~blank
+    invalid = (
+        (numbers.isna() & ~blank)
+        | numbers.isin([float("inf"), float("-inf")])
+    )
 
     if required:
         invalid = invalid | blank

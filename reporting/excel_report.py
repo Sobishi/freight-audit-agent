@@ -1,4 +1,6 @@
 from pathlib import Path
+import os
+import tempfile
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 import pandas as pd
@@ -155,161 +157,182 @@ combined_exposure: pd.DataFrame | None = None,
         columns=["Metric", "Value"],
     )
 
-    with pd.ExcelWriter(
-        output_file,
-        engine="openpyxl",
-    ) as writer:
+    # Write to a temporary workbook first so failures cannot
+    # overwrite an existing completed audit report.
+    temporary_path = None
 
-        summary_df.to_excel(
-            writer,
-            sheet_name="Audit Summary",
-            index=False,
-        )
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{output_file.stem}.",
+            suffix=".xlsx",
+            dir=output_file.parent,
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
 
-        findings.to_excel(
-            writer,
-            sheet_name="Audit Findings",
-            index=False,
-        )
+        with pd.ExcelWriter(
+            temporary_path,
+            engine="openpyxl",
+        ) as writer:
 
-        audited_invoice.to_excel(
-            writer,
-            sheet_name="Invoice Data",
-            index=False,
-        )
-
-        # Final decisions remain separate from legacy exposure reconciliation.
-        if final_payment_decisions is not None:
-            final_payment_decisions.to_excel(
+            summary_df.to_excel(
                 writer,
-                sheet_name="Final Payment Decisions",
+                sheet_name="Audit Summary",
                 index=False,
             )
 
-        # Weight evidence is review information, not financial exposure.
-        if weight_results is not None:
-            weight_results.to_excel(
+            findings.to_excel(
                 writer,
-                sheet_name="Weight Validation",
-                index=False,
-            )
-        # R4 contract pricing is reported separately from combined exposure.
-        if contract_pricing_results is not None:
-            contract_pricing_results.to_excel(
-                writer,
-                sheet_name="Contract Pricing",
+                sheet_name="Audit Findings",
                 index=False,
             )
 
-        # R5 delivery evidence is review information, not financial exposure.
-        if delivery_evidence_results is not None:
-            delivery_evidence_results.to_excel(
+            audited_invoice.to_excel(
                 writer,
-                sheet_name="Delivery Evidence",
+                sheet_name="Invoice Data",
                 index=False,
             )
 
-        # R6 surcharge findings remain separate from combined exposure.
-        if surcharge_results is not None:
-            surcharge_results.to_excel(
-                writer,
-                sheet_name="Surcharge Validation",
-                index=False,
+            # Final decisions remain separate from legacy exposure reconciliation.
+            if final_payment_decisions is not None:
+                final_payment_decisions.to_excel(
+                    writer,
+                    sheet_name="Final Payment Decisions",
+                    index=False,
+                )
+
+            # Weight evidence is review information, not financial exposure.
+            if weight_results is not None:
+                weight_results.to_excel(
+                    writer,
+                    sheet_name="Weight Validation",
+                    index=False,
+                )
+            # R4 contract pricing is reported separately from combined exposure.
+            if contract_pricing_results is not None:
+                contract_pricing_results.to_excel(
+                    writer,
+                    sheet_name="Contract Pricing",
+                    index=False,
+                )
+
+            # R5 delivery evidence is review information, not financial exposure.
+            if delivery_evidence_results is not None:
+                delivery_evidence_results.to_excel(
+                    writer,
+                    sheet_name="Delivery Evidence",
+                    index=False,
+                )
+
+            # R6 surcharge findings remain separate from combined exposure.
+            if surcharge_results is not None:
+                surcharge_results.to_excel(
+                    writer,
+                    sheet_name="Surcharge Validation",
+                    index=False,
+                )
+
+            # R6 tax findings remain separate from combined exposure.
+            if tax_results is not None:
+                tax_results.to_excel(
+                    writer,
+                    sheet_name="Tax Validation",
+                    index=False,
+                )
+
+            # Add a detailed reconciliation worksheet when available.
+            if combined_exposure is not None:
+                reconciliation_columns = [
+                    "Invoice Line ID",
+                    "AWB",
+                    "Invoice Ref",
+                    "Carrier",
+                    "Total",
+                    "Is Exact Duplicate Charge",
+                    "Duplicate Exposure",
+                    "Rate Exposure",
+                    "Combined Potential Exposure",
+                    'Charge Type',
+                    'Currency',
+                    'Duplicate Match Basis',
+                    'Duplicate Exposure Status',
+                    'Credit Match Status',
+                    'Matched Line ID',
+                    'Excluded From Exposure',
+                    "Rate Exposure Status",
+                    "Payment Treatment",
+                ]
+
+                available_columns = [
+                    column
+                    for column in reconciliation_columns
+                    if column in combined_exposure.columns
+                ]
+
+                combined_exposure[available_columns].to_excel(
+                    writer,
+                    sheet_name="Exposure Reconciliation",
+                    index=False,
+                )
+
+            # Include rate validation only when results are available.
+            if rate_results is not None:
+                rate_columns = [
+                    "AWB",
+                    "Carrier",
+                    "Invoice Ref",
+                    "Service Type",
+                    "Total",
+                    "Rate Validation Amount",
+                    "Agreed Rate",
+                    "Rate Difference",
+                    "Potential Rate Overcharge",
+                    "Rate Status",
+                    "Rate Basis",
+                    'Charge Type',
+                    'Currency',
+                    'Credit Match Status',
+                    'Matched Line ID',
+                    'Excluded From Exposure',
+                    "Rule IDs",
+                    "Rule Versions",
+                    "Rule Descriptions",
+                    "Has Missing Invoice Information",
+                    "Has Missing Base Freight",
+                ]
+                available_columns = [
+                    column
+                    for column in rate_columns
+                    if column in rate_results.columns
+                ]
+
+                rate_results[available_columns].to_excel(
+                    writer,
+                    sheet_name="Rate Validation",
+                    index=False,
+                )
+
+            # Format every worksheet once.
+            for worksheet in writer.book.worksheets:
+                format_excel_worksheet(worksheet)
+
+            # Highlight duplicate audit findings.
+            highlight_audit_findings(
+                writer.book["Audit Findings"]
             )
 
-        # R6 tax findings remain separate from combined exposure.
-        if tax_results is not None:
-            tax_results.to_excel(
-                writer,
-                sheet_name="Tax Validation",
-                index=False,
+            # Add the audit disclaimer once.
+            add_audit_disclaimer(
+                writer.book["Audit Summary"]
             )
 
-        # Add a detailed reconciliation worksheet when available.
-        if combined_exposure is not None:
-            reconciliation_columns = [
-                "Invoice Line ID",
-                "AWB",
-                "Invoice Ref",
-                "Carrier",
-                "Total",
-                "Is Exact Duplicate Charge",
-                "Duplicate Exposure",
-                "Rate Exposure",
-                "Combined Potential Exposure",
-                'Charge Type',
-                'Currency',
-                'Duplicate Match Basis',
-                'Duplicate Exposure Status',
-                'Credit Match Status',
-                'Matched Line ID',
-                'Excluded From Exposure',
-                "Rate Exposure Status",
-                "Payment Treatment",
-            ]
+        # Publish only after the workbook closes successfully.
+        os.replace(temporary_path, output_file)
+        temporary_path = None
 
-            available_columns = [
-                column
-                for column in reconciliation_columns
-                if column in combined_exposure.columns
-            ]
-
-            combined_exposure[available_columns].to_excel(
-                writer,
-                sheet_name="Exposure Reconciliation",
-                index=False,
-            )
-
-        # Include rate validation only when results are available.
-        if rate_results is not None:
-            rate_columns = [
-                "AWB",
-                "Carrier",
-                "Invoice Ref",
-                "Service Type",
-                "Total",
-                "Rate Validation Amount",
-                "Agreed Rate",
-                "Rate Difference",
-                "Potential Rate Overcharge",
-                "Rate Status",
-                "Rate Basis",
-                'Charge Type',
-                'Currency',
-                'Credit Match Status',
-                'Matched Line ID',
-                'Excluded From Exposure',
-                "Rule IDs",
-                "Rule Versions",
-                "Rule Descriptions",
-                "Has Missing Invoice Information",
-                "Has Missing Base Freight",
-            ]
-            available_columns = [
-                column
-                for column in rate_columns
-                if column in rate_results.columns
-            ]
-
-            rate_results[available_columns].to_excel(
-                writer,
-                sheet_name="Rate Validation",
-                index=False,
-            )
-
-        # Format every worksheet once.
-        for worksheet in writer.book.worksheets:
-            format_excel_worksheet(worksheet)
-
-        # Highlight duplicate audit findings.
-        highlight_audit_findings(
-            writer.book["Audit Findings"]
-        )
-
-        # Add the audit disclaimer once.
-        add_audit_disclaimer(
-            writer.book["Audit Summary"]
-        )
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
     return output_file
 

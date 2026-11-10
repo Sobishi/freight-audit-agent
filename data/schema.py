@@ -189,7 +189,13 @@ def validate_invoice_data(dataframe: pd.DataFrame):
         )
 
         # Identify missing or nonnumeric amounts.
-        invalid_amounts = numeric_amounts.isna()
+        invalid_amounts = (
+            numeric_amounts.isna()
+            | ~numeric_amounts.map(
+                lambda value: pd.notna(value)
+                and abs(value) != float("inf")
+            )
+        )
 
         if invalid_amounts.any():
             invalid_count = int(invalid_amounts.sum())
