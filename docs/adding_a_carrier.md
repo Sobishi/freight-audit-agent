@@ -29,8 +29,17 @@ tolerance: 0.01                # largest difference still treated as a match
 Optional settings: `max_band`, `excess_band_code`, `tax_rate`, `tax_inclusive`,
 `surcharge_basis` (`per_kg`, `fixed` or `percent_of_freight`), `valid_from`, `valid_to`.
 
-Today only `tolerance` changes the audit result. The other settings are validated and
-stored now, and the pricing engine uses them in a later phase.
+Carrier profile settings have different roles in the current implementation.
+`tolerance` is used in financial comparisons. `dim_divisor` and the
+`rounding` settings are used in expected billable-weight calculations when
+weight validation is enabled. `unit_system` affects weight processing and
+default weight-unit mapping.
+
+Not every profile setting directly controls an audit calculation. In
+particular, tax validation uses explicit invoice-line contract evidence;
+do not assume that profile tax settings replace that evidence. Contract
+rate-card effective dates are also validated separately. Verify which
+settings apply to each audit before interpreting the results.
 
 The profiles in `config/carriers/` use illustrative values. Replace them with the terms in
 your own contract before using them on real invoices.
