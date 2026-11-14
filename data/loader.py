@@ -150,6 +150,7 @@ def load_invoice_with_mapping(
     mapping,
     sheet_name=None,
     header_row=None,
+    auto_detect_layout=False,
 ):
     """
     Load a carrier invoice and convert it to the standard format
@@ -168,8 +169,30 @@ def load_invoice_with_mapping(
             f"Invoice file not found: {file_path}"
         )
 
-    header = mapping.header_row if header_row is None else header_row
     extension = file_path.suffix.lower()
+
+    if auto_detect_layout and header_row is None:
+        if extension in {".xlsx", ".xls"}:
+            detection_sheet = (
+                sheet_name if sheet_name is not None
+                else mapping.sheet
+            )
+            if detection_sheet is None:
+                detection_sheet = detect_invoice_sheet(file_path)
+            header = detect_header_row(
+                file_path,
+                sheet_name=detection_sheet,
+            )
+        elif extension == ".csv":
+            detection_sheet = None
+            header = detect_header_row(file_path)
+        else:
+            raise ValueError(
+                f"Unsupported file format: {extension}"
+            )
+    else:
+        detection_sheet = None
+        header = mapping.header_row if header_row is None else header_row
 
     if extension == ".csv":
         raw = pd.read_csv(
@@ -182,7 +205,12 @@ def load_invoice_with_mapping(
         )
 
     elif extension in {".xlsx", ".xls"}:
-        sheet = sheet_name if sheet_name is not None else mapping.sheet
+        sheet = (
+            detection_sheet
+            if detection_sheet is not None
+            else sheet_name if sheet_name is not None
+            else mapping.sheet
+        )
 
         raw = pd.read_excel(
             file_path,

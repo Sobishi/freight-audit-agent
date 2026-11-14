@@ -19,6 +19,7 @@ class AuditRequest:
     carrier: str | None = None
     sheet: str | None = None
     header_row: int | None = None
+    auto_detect_layout: bool = False
     rates: Path | None = None
     contract_rates: Path | None = None
     delivery_evidence: Path | None = None
@@ -161,6 +162,7 @@ def run_audit(request: AuditRequest) -> AuditResult:
         carrier=request.carrier,
         sheet=request.sheet,
         header_row=request.header_row,
+        auto_detect_layout=request.auto_detect_layout,
         rates=str(request.rates) if request.rates else None,
         contract_rates=(
             str(request.contract_rates)
@@ -187,6 +189,7 @@ def run_audit(request: AuditRequest) -> AuditResult:
         "carrier_id": request.carrier,
         "sheet": request.sheet,
         "header_row": request.header_row,
+        "auto_detect_layout": request.auto_detect_layout,
         "allow_total_fallback": request.allow_total_fallback,
         "weight_validation_enabled": request.weight_tolerance is not None,
         "weight_tolerance_kg": request.weight_tolerance,

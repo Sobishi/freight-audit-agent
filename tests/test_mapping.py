@@ -286,6 +286,67 @@ def test_two_file_columns_matching_one_mapped_name_is_rejected():
         standardize_invoice(raw, _mapping())
 
 
+def test_alias_fallback_recognizes_invoice_reference():
+    mapping = _mapping(columns={
+        "Waybill": "AWB",
+        "Amount": "Total",
+        "Invoice No": "Invoice Ref",
+    })
+    raw = _raw(Waybill=["A1"], Amount=["5"], **{
+        "Invoice Ref": ["INV-001"],
+    })
+
+    result = standardize_invoice(raw, mapping)
+
+    assert result.loc[0, "Invoice Ref"] == "INV-001"
+
+
+def test_configured_header_takes_priority_over_alias():
+    mapping = _mapping(columns={
+        "Waybill": "AWB",
+        "Amount": "Total",
+        "Invoice No": "Invoice Ref",
+    })
+    raw = _raw(Waybill=["A1"], Amount=["5"], **{
+        "Invoice No": ["INV-PRIMARY"],
+        "Invoice Ref": ["INV-ALTERNATIVE"],
+    })
+
+    result = standardize_invoice(raw, mapping)
+
+    assert result.loc[0, "Invoice Ref"] == "INV-PRIMARY"
+
+
+def test_alias_fallback_rejects_ambiguous_invoice_headers():
+    mapping = _mapping(columns={
+        "Waybill": "AWB",
+        "Amount": "Total",
+        "Invoice No": "Invoice Ref",
+    })
+    raw = _raw(Waybill=["A1"], Amount=["5"], **{
+        "Invoice Ref": ["INV-001"],
+        "Invoice Number": ["INV-002"],
+    })
+
+    with pytest.raises(ValueError, match="Ambiguous column mapping"):
+        standardize_invoice(raw, mapping)
+
+
+def test_alias_fallback_rejects_reusing_source_column():
+    mapping = _mapping(columns={
+        "Waybill": "AWB",
+        "Amount": "Total",
+        "Tracking Number": "Invoice Ref",
+    })
+    raw = _raw(**{
+        "Tracking Number": ["A1"],
+        "Total": ["5"],
+    })
+
+    with pytest.raises(ValueError, match="more than one standard field"):
+        standardize_invoice(raw, mapping)
+
+
 def test_blank_awb_is_rejected():
     raw = _raw(Waybill=["A1", "  "], Amount=["1", "2"])
 

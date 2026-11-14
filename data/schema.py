@@ -31,6 +31,25 @@ COLUMN_ALIASES = {
         "invoice no",
         "invoice id",
     },
+    "Service Type": {
+        "service type",
+        "service",
+        "product",
+    },
+    "Billed Zone": {
+        "billed zone",
+        "destination zone",
+        "zone",
+    },
+    "Billed Weight": {
+        "billed weight",
+        "billed wt kg",
+    },
+    "Surcharge Amount": {
+        "surcharge amount",
+        "surcharge",
+        "fuel charge",
+    },
     "Charge Type": {"charge type", "charge code", "charge category"},
     "Currency": {"currency", "currency code"},
     "Base Freight": {
@@ -38,6 +57,7 @@ COLUMN_ALIASES = {
         "basic freight",
         "freight amount",
         "transportation charge",
+        "freight",
     },
     "Total": {
         "total",

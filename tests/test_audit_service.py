@@ -173,3 +173,41 @@ def test_missing_optional_evidence_is_allowed(valid_request):
     assert valid_request.tax_evidence is None
 
     assert validate_audit_request(valid_request) is None
+
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_auto_detect_layout_reaches_engine_arguments(
+    valid_request, monkeypatch, enabled
+):
+    from dataclasses import replace
+
+    from services.audit_service import run_audit
+
+    captured = {}
+
+    def fake_execute(args, run):
+        captured["auto_detect_layout"] = args.auto_detect_layout
+        raise RuntimeError("STOP_AFTER_ARGUMENT_CAPTURE")
+
+    monkeypatch.setattr(
+        "main._execute_audit",
+        fake_execute,
+    )
+
+    request = replace(
+        valid_request,
+        auto_detect_layout=enabled,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="STOP_AFTER_ARGUMENT_CAPTURE",
+    ):
+        run_audit(request)
+
+    assert captured["auto_detect_layout"] is enabled
+
+
+def test_auto_detect_layout_defaults_to_disabled(valid_request):
+    assert valid_request.auto_detect_layout is False

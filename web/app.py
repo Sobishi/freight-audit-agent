@@ -5,6 +5,7 @@ from pathlib import Path
 import streamlit as st
 import yaml
 
+from web.audit_adapter import execute_staged_audit
 from web.upload_adapter import (
     UploadPayload,
     stage_browser_uploads,
@@ -52,7 +53,7 @@ st.caption("Controlled local audit interface | W1 Pilot")
 
 st.write(
     "Upload a carrier invoice, select its configuration, "
-    "and prepare a freight audit."
+    "and run a freight audit."
 )
 
 carriers = discover_carriers()
@@ -145,21 +146,45 @@ if run_clicked:
             uploads=payloads,
         )
 
-        workspace = staged.workspace
-        staged_files = staged.files
+        with st.spinner("Running freight audit..."):
+            result = execute_staged_audit(
+                staged=staged,
+                config_dir=CONFIG_DIR,
+                carrier=carrier,
+            )
 
     except (ValueError, TypeError, OSError, RuntimeError) as exc:
-        st.error(f"Upload preparation failed: {exc}")
+        st.error(f"Freight audit failed: {exc}")
     else:
-        st.success("Files securely staged for audit.")
-        st.write("Workspace ID:", workspace.workspace_id)
+        st.write("Workspace ID:", staged.workspace.workspace_id)
         st.write("Selected carrier:", carriers[carrier])
-        st.write("Staged files:")
+        st.write("Audit run ID:", result.run_id)
+        st.write("Audit status:", result.status)
 
-        for label, path in staged_files.items():
-            st.write(f"{label}: {path.name}")
+        st.subheader("Audit summary")
+        st.json(result.summary)
 
-        st.info(
-            "Audit execution is not enabled yet. "
-            "This checkpoint verifies secure browser ingestion."
+        if (
+            result.status == "succeeded"
+            and result.report_path is not None
+            and result.report_path.is_file()
+        ):
+            st.success("Audit report generated successfully.")
+
+            st.download_button(
+                label="Download Excel Report",
+                data=result.report_path.read_bytes(),
+                file_name="audit_report.xlsx",
+                mime=(
+                    "application/vnd.openxmlformats-officedocument."
+                    "spreadsheetml.sheet"
+                ),
+                key=f"download_{result.run_id}",
+            )
+        else:
+            st.warning("No downloadable audit report was returned.")
+
+        st.caption(
+            "Controlled local pilot. Audit results are not "
+            "authorization to pay carrier invoices."
         )

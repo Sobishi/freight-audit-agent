@@ -189,3 +189,56 @@ def test_freight_charge_still_maps_to_total():
 
     assert "Total" in result.columns
     assert "Base Freight" not in result.columns
+
+
+def test_service_type_aliases_are_recognized():
+    from data.schema import identify_columns, normalize_columns
+    import pandas as pd
+
+    for source_header in ("Service Type", "Service", "Product"):
+        identified = identify_columns(["AWB", source_header])
+        assert identified["Service Type"] == source_header
+
+        invoice = pd.DataFrame({
+            "AWB": ["TEST001"],
+            source_header: ["Express"],
+        })
+
+        normalized = normalize_columns(invoice)
+
+        assert normalized.loc[0, "Service Type"] == "Express"
+
+    with __import__("pytest").raises(
+        ValueError,
+        match="Ambiguous mapping for 'Service Type'",
+    ):
+        identify_columns(["Service", "Product"])
+
+
+def test_invoice_financial_and_zone_aliases():
+    import pandas as pd
+    import pytest
+
+    from data.schema import identify_columns, normalize_columns
+
+    cases = {
+        "Zone": "Billed Zone",
+        "Destination Zone": "Billed Zone",
+        "Billed Wt (kg)": "Billed Weight",
+        "Freight": "Base Freight",
+        "Surcharge": "Surcharge Amount",
+        "Fuel Charge": "Surcharge Amount",
+    }
+
+    for source_header, standard_field in cases.items():
+        identified = identify_columns([source_header])
+        assert identified[standard_field] == source_header
+
+        raw = pd.DataFrame({source_header: [12.5]})
+        normalized = normalize_columns(raw)
+
+        assert standard_field in normalized.columns
+        assert normalized.loc[0, standard_field] == 12.5
+
+    with pytest.raises(ValueError, match="Ambiguous mapping"):
+        identify_columns(["Surcharge", "Fuel Charge"])

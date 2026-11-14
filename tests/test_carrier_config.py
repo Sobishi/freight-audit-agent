@@ -231,3 +231,107 @@ def test_default_config_folder_is_inside_the_project():
 def test_list_carriers_on_an_empty_or_missing_folder(tmp_path):
     assert list_carriers(tmp_path) == []
     assert list_carriers(tmp_path / "nope") == []
+
+
+def test_auto_detect_layout_handles_shifted_headers(tmp_path):
+    import pandas as pd
+
+    from data.carrier_config import load_carrier_config
+    from data.loader import load_invoice_with_mapping
+
+    config = load_carrier_config(
+        "northbridge_express",
+        Path("config").resolve(),
+    )
+
+    columns = [
+        "Invoice Ref", "AWB", "Ship Date", "Product",
+        "Zone", "Billed Wt (kg)", "Freight",
+        "Surcharge", "Tax", "Total",
+    ]
+
+    values = [
+        "INV-001", "TEST001", "2026-09-01", "Express",
+        "Z2", 5.0, 20.0, 3.0, 1.73, 24.73,
+    ]
+
+    file_path = tmp_path / "shifted_invoice.xlsx"
+
+    with pd.ExcelWriter(file_path) as writer:
+        pd.DataFrame([["Invoice Report"]]).to_excel(
+            writer,
+            sheet_name="Invoice",
+            index=False,
+            header=False,
+        )
+
+        pd.DataFrame([values], columns=columns).to_excel(
+            writer,
+            sheet_name="Invoice",
+            index=False,
+            startrow=3,
+        )
+
+    invoice = load_invoice_with_mapping(
+        file_path,
+        config.mapping,
+        auto_detect_layout=True,
+    )
+
+    assert len(invoice) == 1
+    assert invoice.loc[0, "AWB"] == "TEST001"
+    assert invoice.loc[0, "Service Type"] == "Express"
+    assert invoice.loc[0, "Billed Zone"] == "Z2"
+    assert invoice.loc[0, "Base Freight"] == 20.0
+
+
+def test_auto_detect_layout_respects_explicit_header_row(tmp_path):
+    import pandas as pd
+
+    from data.carrier_config import load_carrier_config
+    from data.loader import load_invoice_with_mapping
+
+    config = load_carrier_config(
+        "northbridge_express",
+        Path("config").resolve(),
+    )
+
+    columns = [
+        "Invoice Ref", "AWB", "Ship Date", "Product",
+        "Zone", "Billed Wt (kg)", "Freight",
+        "Surcharge", "Tax", "Total",
+    ]
+
+    values = [
+        "INV-002", "TEST002", "2026-09-01", "Saver",
+        "Z1", 2.0, 12.0, 0.0, 0.9, 12.9,
+    ]
+
+    file_path = tmp_path / "explicit_header.xlsx"
+
+    pd.DataFrame([values], columns=columns).to_excel(
+        file_path,
+        index=False,
+    )
+
+    invoice = load_invoice_with_mapping(
+        file_path,
+        config.mapping,
+        header_row=0,
+        auto_detect_layout=True,
+    )
+
+    assert len(invoice) == 1
+    assert invoice.loc[0, "AWB"] == "TEST002"
+
+
+def test_configured_layout_remains_default():
+    import inspect
+
+    from data.loader import load_invoice_with_mapping
+
+    signature = inspect.signature(load_invoice_with_mapping)
+
+    assert signature.parameters[
+        "auto_detect_layout"
+    ].default is False

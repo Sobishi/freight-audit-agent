@@ -39,6 +39,7 @@ def execute_workspace_audit(
     carrier: str | None = None,
     sheet: str | None = None,
     header_row: int | None = None,
+    auto_detect_layout: bool = False,
     rates: Path | None = None,
     contract_rates: Path | None = None,
     delivery_evidence: Path | None = None,
@@ -65,6 +66,7 @@ def execute_workspace_audit(
         carrier=carrier,
         sheet=sheet,
         header_row=header_row,
+        auto_detect_layout=auto_detect_layout,
         rates=_require_staged_file(workspace, rates, "Rate card"),
         contract_rates=_require_staged_file(
             workspace, contract_rates, "Contract rates"

@@ -58,6 +58,11 @@ def main():
         help="Header row position, starting from 0 (optional)"
     )
     parser.add_argument(
+        "--auto-detect-layout",
+        action="store_true",
+        help="Automatically detect invoice worksheet and header row.",
+    )
+    parser.add_argument(
         "--rates",
         help="Path to a CSV or Excel file containing agreed carrier rates.",
     )
@@ -318,6 +323,9 @@ def _execute_audit(args, run):
                 carrier_config.mapping,
                 sheet_name=args.sheet,
                 header_row=args.header_row,
+                auto_detect_layout=getattr(
+                    args, "auto_detect_layout", False
+                ),
             )
         except (FileNotFoundError, ValueError) as error:
             raise SystemExit(f"Error: {error}")

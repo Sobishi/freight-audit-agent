@@ -353,7 +353,8 @@ def _date(values, mapping, label):
 
 
 def _resolve_columns(data, mapping):
-    """Find each mapped carrier column in the file, tolerating case and punctuation."""
+    """Resolve configured columns, falling back to approved standard aliases."""
+    from data.schema import COLUMN_ALIASES
 
     lookup = {}
 
@@ -361,24 +362,50 @@ def _resolve_columns(data, mapping):
         lookup.setdefault(clean_column_name(column), []).append(column)
 
     resolved = {}
+    used_sources = set()
 
     for source, target in mapping.columns.items():
-        matches = lookup.get(clean_column_name(source), [])
+        primary = lookup.get(clean_column_name(source), [])
+
+        if len(primary) > 1:
+            raise ValueError(
+                f"Invoice has more than one column matching '{source}': "
+                f"{', '.join(map(str, primary))}."
+            )
+
+        if primary:
+            matches = primary
+        else:
+            aliases = COLUMN_ALIASES.get(target, set())
+            matches = [
+                column
+                for column in data.columns
+                if clean_column_name(column) in aliases
+            ]
+
+            if len(matches) > 1:
+                raise ValueError(
+                    f"Ambiguous column mapping for '{target}': "
+                    f"{', '.join(map(str, matches))}."
+                )
 
         if not matches:
             raise ValueError(
                 f"Invoice is missing the column '{source}' (mapped to "
-                f"'{target}' for {mapping.carrier_id}). If the carrier changed "
-                f"its layout, update the mapping file."
+                f"'{target}' for {mapping.carrier_id}). No recognized "
+                f"alternative header was found."
             )
 
-        if len(matches) > 1:
+        selected = matches[0]
+
+        if selected in used_sources:
             raise ValueError(
-                f"Invoice has more than one column matching '{source}': "
-                f"{', '.join(map(str, matches))}."
+                f"Invoice column '{selected}' would be mapped to "
+                f"more than one standard field."
             )
 
-        resolved[target] = matches[0]
+        used_sources.add(selected)
+        resolved[target] = selected
 
     return resolved
 
