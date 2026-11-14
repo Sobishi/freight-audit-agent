@@ -14,6 +14,7 @@ class AuditWorkspace:
     inputs_dir: Path
     reports_dir: Path
     logs_dir: Path
+    inputs_identity: tuple[int, int] | None = None
 
     @property
     def report_path(self) -> Path:
@@ -73,6 +74,10 @@ def create_audit_workspace(base_dir: Path) -> AuditWorkspace:
             inputs_dir=inputs_dir,
             reports_dir=reports_dir,
             logs_dir=logs_dir,
+            inputs_identity=(
+                inputs_dir.stat().st_dev,
+                inputs_dir.stat().st_ino,
+            ),
         )
 
     raise RuntimeError("Unable to allocate a unique audit workspace.")
